@@ -211,7 +211,7 @@ Resources:
               - S3Bucket
             #- !Ref 'AWS::Region'
         S3Key: serverless-image-handler/%%VERSION%%/image-handler.zip
-      Runtime: nodejs12.x
+      Runtime: nodejs8.10
       MemorySize: 1024
       Timeout: 30
       Environment:
