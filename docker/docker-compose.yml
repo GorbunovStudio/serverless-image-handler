@@ -1,0 +1,12 @@
+version: "2"
+
+services:
+  runner:
+    image: lambci/lambda:nodejs8.10
+    volumes:
+      - ../source/image-handler:/var/task:ro,delegated
+    environment:
+      SOURCE_BUCKETS: ${SOURCE_BUCKETS}
+      PATH_PREFIX: ${PATH_PREFIX}
+      AWS_ACCESS_KEY_ID: ${AWS_ACCESS_KEY_ID}
+      AWS_SECRET_ACCESS_KEY: ${AWS_SECRET_ACCESS_KEY}
