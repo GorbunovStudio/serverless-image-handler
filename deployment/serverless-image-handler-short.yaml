@@ -22,6 +22,11 @@ Parameters:
       (i.e. https://example.domain) to restrict cross-site access to your API.
     Default: '*'
     Type: String
+
+  UrlPrefix:
+    Description: (Optional) Url prefix for the API endpoint
+    Default: /image
+    Type: String
   
   SourceBuckets:
     Description: (Required) List the buckets (comma-separated) within your account
@@ -31,6 +36,7 @@ Parameters:
     Default: budsies-staging-test
     Type: String
     AllowedPattern: .+
+    
   
   LogRetentionPeriod:
     Description: This solution automatically logs events to Amazon CloudWatch. Select
@@ -99,7 +105,7 @@ Resources:
         Origins:
           - DomainName: !Sub '${ImageHandlerApi}.execute-api.${AWS::Region}.amazonaws.com'
             Id: !Ref 'ImageHandlerApi'
-            OriginPath: /image
+            OriginPath: !Ref UrlPrefix
             CustomOriginConfig:
               HTTPSPort: 443
               OriginProtocolPolicy: https-only
@@ -116,7 +122,7 @@ Resources:
             - HEAD
           TargetOriginId: !Sub '${ImageHandlerApi}'
           ForwardedValues:
-            QueryString: false
+            QueryString: true
             Headers:
               - Origin
             Cookies:
@@ -153,7 +159,7 @@ Resources:
         info:
           version: '2017-01-27T21:44:58Z'
           title: ServerlessImageHandler
-        basePath: /image
+        basePath: !Ref UrlPrefix
         schemes:
           - https
         paths:
@@ -219,6 +225,7 @@ Resources:
           CORS_ENABLED: !Ref 'CorsEnabled'
           CORS_ORIGIN: !Ref 'CorsOrigin'
           SOURCE_BUCKETS: !Ref 'SourceBuckets'
+          PATH_PREFIX: !Sub '${UrlPrefix}/'
           REWRITE_MATCH_PATTERN: ''
           REWRITE_SUBSTITUTION: ''
   
