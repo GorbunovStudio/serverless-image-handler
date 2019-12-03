@@ -23,6 +23,10 @@ Parameters:
     Default: '*'
     Type: String
 
+  DomainName:
+    Default: images.example.com
+    Type: String
+
   UrlPrefix:
     Description: (Optional) Url prefix for the API endpoint
     Default: /image
@@ -102,6 +106,8 @@ Resources:
     Type: AWS::CloudFront::Distribution
     Properties:
       DistributionConfig:
+        Aliases:
+          - !Ref 'DomainName'
         Origins:
           - DomainName: !Sub '${ImageHandlerApi}.execute-api.${AWS::Region}.amazonaws.com'
             Id: !Ref 'ImageHandlerApi'
@@ -225,7 +231,7 @@ Resources:
           CORS_ENABLED: !Ref 'CorsEnabled'
           CORS_ORIGIN: !Ref 'CorsOrigin'
           SOURCE_BUCKETS: !Ref 'SourceBuckets'
-          PATH_PREFIX: !Sub '${UrlPrefix}/'
+          PATH_PREFIX: '/'
           REWRITE_MATCH_PATTERN: ''
           REWRITE_SUBSTITUTION: ''
   
