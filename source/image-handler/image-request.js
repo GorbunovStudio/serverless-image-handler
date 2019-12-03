@@ -104,6 +104,11 @@ class ImageRequest {
      */
     parseImageEdits(event, requestType) {
         if (requestType === "Default") {
+
+            if (event['queryStringParameters'] == null) {
+                return {};
+            }
+
             const rawData = event['queryStringParameters']['edits'];
 
             const decoded = this.decodeRequest(rawData);
