@@ -117,7 +117,7 @@ class ImageRequest {
                 return {};
             }
 
-            return decoded.edits;
+            return decoded;
         } else {
             throw ({
                 status: 400,
