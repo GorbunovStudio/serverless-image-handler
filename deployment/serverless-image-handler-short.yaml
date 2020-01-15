@@ -23,6 +23,10 @@ Parameters:
     Default: '*'
     Type: String
 
+  CertificateArnExportName:
+    Default: Staging-ACM:ImagesCertificate
+    Type: String
+  
   DomainName:
     Default: images.example.com
     Type: String
@@ -146,6 +150,9 @@ Resources:
           - ErrorCode: 504
             ErrorCachingMinTTL: 10
         PriceClass: PriceClass_All
+        ViewerCertificate:
+          AcmCertificateArn: {'Fn::ImportValue': !Sub '${CertificateArnExportName}'}
+          SslSupportMethod: sni-only
     Metadata:
       cfn_nag:
         rules_to_suppress:
