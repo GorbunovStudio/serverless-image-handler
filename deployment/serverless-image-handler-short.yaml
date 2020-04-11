@@ -3,7 +3,7 @@ AWSTemplateFormatVersion: '2010-09-09'
 Description: '(SO0023) - Serverless Image Handler: This template deploys and configures
   a serverless architecture that is optimized for dynamic image manipulation and delivery
   at low latency and cost. Leverages SharpJS for image processing. Template version
-  4.'
+  %%VERSION%%.'
 
 Parameters:
   
@@ -71,6 +71,15 @@ Parameters:
       - 1827
       - 3653
 
+  AutoWebP:
+    Description: Would you like to enable automatic WebP based on accept headers? Select 'Yes' if so.
+    Default: No
+    Type: String
+    AllowedValues:
+      - Yes
+      - No
+
+
 Metadata:
   AWS::CloudFormation::Interface:
     ParameterGroups:
@@ -103,9 +112,32 @@ Mappings:
   SourceCode:
     General:
       S3Bucket: '%%BUCKET_NAME%%'
-      KeyPrefix: serverless-image-handler/%%VERSION%%
+      KeyPrefix: "%%SOLUTION_NAME%%/%%VERSION%%"
       
 Resources:
+  Logs: 
+    Type: "AWS::S3::Bucket"
+    DeletionPolicy: "Retain"
+    UpdateReplacePolicy: "Retain"
+    Properties:
+      AccessControl: "LogDeliveryWrite"
+      BucketEncryption:
+        ServerSideEncryptionConfiguration:
+          - ServerSideEncryptionByDefault:
+              SSEAlgorithm: "AES256"
+      PublicAccessBlockConfiguration:
+        BlockPublicAcls: true
+        BlockPublicPolicy: true
+        IgnorePublicAcls: true
+        RestrictPublicBuckets: true
+    Metadata:
+      cfn_nag: 
+        rules_to_suppress:
+          - id: "W35"
+            reason: "Used to store access logs for other buckets"
+          - id: "W51"
+            reason: "Bucket does not need a bucket policy"
+
   ImageHandlerDistribution:
     Type: AWS::CloudFront::Distribution
     Properties:
@@ -135,6 +167,7 @@ Resources:
             QueryString: true
             Headers:
               - Origin
+              - Accept
             Cookies:
               Forward: none
           ViewerProtocolPolicy: https-only
@@ -153,13 +186,55 @@ Resources:
         ViewerCertificate:
           AcmCertificateArn: {'Fn::ImportValue': !Sub '${CertificateArnExportName}'}
           SslSupportMethod: sni-only
+        Logging: 
+          IncludeCookies: false
+          Bucket: !GetAtt "Logs.DomainName"
+          Prefix: "image-handler-cf-logs/"
+
+
+  ApiLoggingRole:
+    Type: AWS::IAM::Role
     Metadata:
       cfn_nag:
         rules_to_suppress:
-          - id: W10
-            reason: This CloudFront Distribution does not require access logging.
-              API calls and image operations are logged to CloudWatch with custom
-              reporting.
+          - id: W11
+            reason: API Gateway requires these permissions for CloudWatch Logging 
+              (https://docs.aws.amazon.com/apigateway/latest/developerguide/set-up-logging.html#set-up-access-logging-permissions)
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service:
+                - apigateway.amazonaws.com
+            Action:
+              - sts:AssumeRole
+      Path: /
+      Policies:
+        - PolicyName: !Sub "${AWS::StackName}-api-logging-policy"
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Effect: Allow
+                Action:
+                  - logs:CreateLogGroup
+                  - logs:CreateLogStream
+                  - logs:DescribeLogGroups
+                  - logs:DescribeLogStreams
+                  - logs:PutLogEvents
+                  - logs:GetLogEvents
+                  - logs:FilterLogEvents
+                Resource: !Sub "arn:aws:logs:${AWS::Region}:${AWS::AccountId}:*"
+      
+
+  ApiAccountConfig:
+    Type: AWS::ApiGateway::Account
+    Properties:
+      CloudWatchRoleArn: !GetAtt "ApiLoggingRole.Arn"        
+
+  ApiLogs:
+    Type: AWS::Logs::LogGroup
   
   ImageHandlerApi:
     Type: AWS::ApiGateway::RestApi
@@ -210,9 +285,14 @@ Resources:
   
   ImageHandlerApiDeployment:
     Type: AWS::ApiGateway::Deployment
+    DependsOn: ApiAccountConfig
     Properties:
       RestApiId: !Ref 'ImageHandlerApi'
       StageName: image
+      StageDescription:
+        AccessLogSetting:
+          DestinationArn: !GetAtt "ApiLogs.Arn"
+          Format: "$context.identity.sourceIp $context.identity.caller $context.identity.user [$context.requestTime] \"$context.httpMethod $context.resourcePath $context.protocol\" $context.status $context.responseLength $context.requestId"
   
   ImageHandlerFunction:
     Type: AWS::Lambda::Function
@@ -229,12 +309,19 @@ Resources:
               - General
               - S3Bucket
             #- !Ref 'AWS::Region'
-        S3Key: serverless-image-handler/%%VERSION%%/image-handler.zip
-      Runtime: nodejs8.10
+        S3Key: !Join
+          - '/'
+          - - !FindInMap
+              - SourceCode
+              - General
+              - KeyPrefix
+            - "image-handler.zip"
+      Runtime: nodejs12.x
       MemorySize: 1024
       Timeout: 30
       Environment:
         Variables:
+          AUTO_WEBP: !Ref 'AutoWebP'
           CORS_ENABLED: !Ref 'CorsEnabled'
           CORS_ORIGIN: !Ref 'CorsOrigin'
           SOURCE_BUCKETS: !Ref 'SourceBuckets'
@@ -341,6 +428,12 @@ Outputs:
   ApiEndpoint:
     Description: Link to API endpoint for sending image requests to.
     Value: !Sub 'https://${ImageHandlerDistribution.DomainName}'
+
+  DistributionID:
+    Description: ID of the CloudFront distribution
+    Value: !Ref 'ImageHandlerDistribution'
+    Export:
+      Name: !Sub '${AWS::StackName}:DistributionID'
     
   SourceBuckets:
     Description: Amazon S3 bucket location containing original image files.

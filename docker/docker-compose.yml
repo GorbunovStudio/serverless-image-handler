@@ -2,7 +2,7 @@ version: "2"
 
 services:
   runner:
-    image: lambci/lambda:nodejs8.10
+    image: lambci/lambda:nodejs12.x
     volumes:
       - ../source/image-handler:/var/task:ro,delegated
     environment:
