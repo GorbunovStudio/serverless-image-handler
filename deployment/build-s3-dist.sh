@@ -66,6 +66,7 @@ npm install
 npm run build
 cp dist/image-handler.zip $build_dist_dir/image-handler.zip
 
+
 # echo "------------------------------------------------------------------------------"
 # echo "Package the demo-ui assets"
 # echo "------------------------------------------------------------------------------"
