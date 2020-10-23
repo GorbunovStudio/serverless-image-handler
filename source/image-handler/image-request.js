@@ -1,5 +1,5 @@
 /*********************************************************************************************************************
- *  Copyright 2019 Amazon.com, Inc. or its affiliates. All Rights Reserved.                                           *
+ *  Copyright 2020 Amazon.com, Inc. or its affiliates. All Rights Reserved.                                           *
  *                                                                                                                    *
  *  Licensed under the Apache License, Version 2.0 (the "License"). You may not use this file except in compliance    *
  *  with the License. A copy of the License is located at                                                             *
@@ -18,7 +18,7 @@ class ImageRequest {
     /**
      * Initializer function for creating a new image request, used by the image
      * handler to perform image modifications.
-     * @param {Object} event - Lambda request body.
+     * @param {object} event - Lambda request body.
      */
     async setup(event) {
         try {
@@ -56,16 +56,17 @@ class ImageRequest {
                 }
             }
 
-            return Promise.resolve(this);
+            return this;
         } catch (err) {
-            return Promise.reject(err);
+            console.error(err);
+            throw err;
         }
     }
 
     /**
      * Gets the original image from an Amazon S3 bucket.
-     * @param {String} bucket - The name of the bucket containing the image.
-     * @param {String} key - The key name corresponding to the image.
+     * @param {string} bucket - The name of the bucket containing the image.
+     * @param {string} key - The key name corresponding to the image.
      * @return {Promise} - The original image or an error.
      */
     async getOriginalImage(bucket, key) {
@@ -95,21 +96,21 @@ class ImageRequest {
                 this.CacheControl = "max-age=31536000,public";
             }
 
-            return Promise.resolve(originalImage.Body);
+            return originalImage.Body;
         } catch(err) {
-            return Promise.reject({
+            throw {
                 status: ('NoSuchKey' === err.code) ? 404 : 500,
                 code: err.code,
                 message: err.message
-            });
+            };
         }
     }
 
     /**
      * Parses the name of the appropriate Amazon S3 bucket to source the
      * original image from.
-     * @param {String} event - Lambda request body.
-     * @param {String} requestType - Image handler request type.
+     * @param {string} event - Lambda request body.
+     * @param {string} requestType - Image handler request type.
      */
     parseImageBucket(event, requestType) {
         if (requestType === "Default") {
@@ -147,8 +148,8 @@ class ImageRequest {
 
     /**
      * Parses the edits to be made to the original image.
-     * @param {String} event - Lambda request body.
-     * @param {String} requestType - Image handler request type.
+     * @param {string} event - Lambda request body.
+     * @param {string} requestType - Image handler request type.
      */
     parseImageEdits(event, requestType) {
         if (requestType === "Default") {
@@ -210,7 +211,7 @@ class ImageRequest {
      * prefix to the image request. Categorizes a request as either "image"
      * (uses the Sharp library), "thumbor" (uses Thumbor mapping), or "custom"
      * (uses the rewrite function).
-     * @param {Object} event - Lambda request body.
+     * @param {object} event - Lambda request body.
     */
     parseRequestType(event) {
         return 'Default';        
@@ -225,7 +226,7 @@ class ImageRequest {
     /**
      * Decodes the base64-encoded image request path associated with default
      * image requests. Provides error handling for invalid or undefined path values.
-     * @param {Object} event - The proxied request object.
+     * @param {object} event - The proxied request object.
      */
     decodeRequest(encoded) {
         if (encoded == null) { 
@@ -272,7 +273,7 @@ class ImageRequest {
     */
     getOutputFormat(event, edits) {
         const autoWebP = process.env.AUTO_WEBP;
-        if (autoWebP && event.headers.Accept && event.headers.Accept.includes('image/webp')) {
+        if (autoWebP === 'Yes' && event.headers.Accept && event.headers.Accept.includes('image/webp')) {
             return 'webp';
         } else if (this.requestType === 'Default') {            
             return edits.outputFormat;

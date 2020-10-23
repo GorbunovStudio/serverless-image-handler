@@ -1,5 +1,5 @@
 /*********************************************************************************************************************
- *  Copyright 2019 Amazon.com, Inc. or its affiliates. All Rights Reserved.                                           *
+ *  Copyright 2020 Amazon.com, Inc. or its affiliates. All Rights Reserved.                                           *
  *                                                                                                                    *
  *  Licensed under the Apache License, Version 2.0 (the "License"). You may not use this file except in compliance    *
  *  with the License. A copy of the License is located at                                                             *
@@ -154,12 +154,135 @@ describe('applyEdits()', function() {
             }
             // Assert
             const imageHandler = new ImageHandler();
-            await imageHandler.applyEdits(originalImage, edits).then((result) => {
-                assert.deepEqual(result.options.input.buffer, originalImage);
-            });
+            const result = await imageHandler.applyEdits(originalImage, edits);
+            assert.deepEqual(result.options.input.buffer, originalImage);
         });
     });
-    describe('003/smartCrop', function() {
+    describe('003/overlay/options/smallerThanZero', function() {
+        it(`Should pass if an edit with the overlayWith keyname is passed to
+            the function`, async function() {
+            // Arrange
+            const sinon = require('sinon');
+            // ---- Amazon S3 stub
+            const S3 = require('aws-sdk/clients/s3');
+            const getObject = S3.prototype.getObject = sinon.stub();
+            getObject.returns({
+                promise: () => { return {
+                  Body: Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==', 'base64')
+                }}
+            })
+            // Act
+            const originalImage = Buffer.from('/9j/4AAQSkZJRgABAQAAAQABAAD/2wBDAAEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQH/2wBDAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQH/wAARCAAEAAQDAREAAhEBAxEB/8QAFAABAAAAAAAAAAAAAAAAAAAACv/EABQQAQAAAAAAAAAAAAAAAAAAAAD/xAAUAQEAAAAAAAAAAAAAAAAAAAAA/8QAFBEBAAAAAAAAAAAAAAAAAAAAAP/aAAwDAQACEQMRAD8AfwD/2Q==', 'base64');
+            const edits = {
+                overlayWith: {
+                    bucket: 'aaa',
+                    key: 'bbb',
+                    options: {
+                        left: '-1',
+                        top: '-1'
+                    }
+                }
+            }
+            // Assert
+            const imageHandler = new ImageHandler();
+            const result = await imageHandler.applyEdits(originalImage, edits);
+            assert.deepEqual(result.options.input.buffer, originalImage);
+        });
+    });
+    describe('004/overlay/options/greaterThanZero', function() {
+        it(`Should pass if an edit with the overlayWith keyname is passed to
+            the function`, async function() {
+            // Arrange
+            const sinon = require('sinon');
+            // ---- Amazon S3 stub
+            const S3 = require('aws-sdk/clients/s3');
+            const getObject = S3.prototype.getObject = sinon.stub();
+            getObject.returns({
+                promise: () => { return {
+                  Body: Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==', 'base64')
+                }}
+            })
+            // Act
+            const originalImage = Buffer.from('/9j/4AAQSkZJRgABAQAAAQABAAD/2wBDAAEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQH/2wBDAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQH/wAARCAAEAAQDAREAAhEBAxEB/8QAFAABAAAAAAAAAAAAAAAAAAAACv/EABQQAQAAAAAAAAAAAAAAAAAAAAD/xAAUAQEAAAAAAAAAAAAAAAAAAAAA/8QAFBEBAAAAAAAAAAAAAAAAAAAAAP/aAAwDAQACEQMRAD8AfwD/2Q==', 'base64');
+            const edits = {
+                overlayWith: {
+                    bucket: 'aaa',
+                    key: 'bbb',
+                    options: {
+                        left: '1',
+                        top: '1'
+                    }
+                }
+            }
+            // Assert
+            const imageHandler = new ImageHandler();
+            const result = await imageHandler.applyEdits(originalImage, edits);
+            assert.deepEqual(result.options.input.buffer, originalImage);
+        });
+    });
+    describe('005/overlay/options/percentage/greaterThanZero', function() {
+        it(`Should pass if an edit with the overlayWith keyname is passed to
+            the function`, async function() {
+            // Arrange
+            const sinon = require('sinon');
+            // ---- Amazon S3 stub
+            const S3 = require('aws-sdk/clients/s3');
+            const getObject = S3.prototype.getObject = sinon.stub();
+            getObject.returns({
+                promise: () => { return {
+                  Body: Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==', 'base64')
+                }}
+            })
+            // Act
+            const originalImage = Buffer.from('/9j/4AAQSkZJRgABAQAAAQABAAD/2wBDAAEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQH/2wBDAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQH/wAARCAAEAAQDAREAAhEBAxEB/8QAFAABAAAAAAAAAAAAAAAAAAAACv/EABQQAQAAAAAAAAAAAAAAAAAAAAD/xAAUAQEAAAAAAAAAAAAAAAAAAAAA/8QAFBEBAAAAAAAAAAAAAAAAAAAAAP/aAAwDAQACEQMRAD8AfwD/2Q==', 'base64');
+            const edits = {
+                overlayWith: {
+                    bucket: 'aaa',
+                    key: 'bbb',
+                    options: {
+                        left: '50p',
+                        top: '50p'
+                    }
+                }
+            }
+            // Assert
+            const imageHandler = new ImageHandler();
+            const result = await imageHandler.applyEdits(originalImage, edits);
+            assert.deepEqual(result.options.input.buffer, originalImage);
+        });
+    });
+    describe('006/overlay/options/percentage/smallerThanZero', function() {
+        it(`Should pass if an edit with the overlayWith keyname is passed to
+            the function`, async function() {
+            // Arrange
+            const sinon = require('sinon');
+            // ---- Amazon S3 stub
+            const S3 = require('aws-sdk/clients/s3');
+            const getObject = S3.prototype.getObject = sinon.stub();
+            getObject.returns({
+                promise: () => { return {
+                  Body: Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==', 'base64')
+                }}
+            })
+            // Act
+            const originalImage = Buffer.from('/9j/4AAQSkZJRgABAQAAAQABAAD/2wBDAAEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQH/2wBDAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQH/wAARCAAEAAQDAREAAhEBAxEB/8QAFAABAAAAAAAAAAAAAAAAAAAACv/EABQQAQAAAAAAAAAAAAAAAAAAAAD/xAAUAQEAAAAAAAAAAAAAAAAAAAAA/8QAFBEBAAAAAAAAAAAAAAAAAAAAAP/aAAwDAQACEQMRAD8AfwD/2Q==', 'base64');
+            const edits = {
+                overlayWith: {
+                    bucket: 'aaa',
+                    key: 'bbb',
+                    options: {
+                        left: '-50p',
+                        top: '-50p'
+                    }
+                }
+            }
+            // Assert
+            const imageHandler = new ImageHandler();
+            const result = await imageHandler.applyEdits(originalImage, edits);
+            assert.deepEqual(result.options.input.buffer, originalImage);
+        });
+    });
+    describe('007/smartCrop', function() {
         it(`Should pass if an edit with the smartCrop keyname is passed to
             the function`, async function() {
             // Arrange
@@ -190,8 +313,6 @@ describe('applyEdits()', function() {
             // Assert
             const imageHandler = new ImageHandler();
             await imageHandler.applyEdits(originalImage, edits).then((result) => {
-                //console.log(result);
-                const sharp = require('sharp');
                 const originalImageData = sharp(originalImage);
                 assert.deepEqual((originalImageData.options.input !== result.options.input), true)
             }).catch((err) => {
@@ -199,7 +320,7 @@ describe('applyEdits()', function() {
             })
         });
     });
-    describe('004/smartCrop/paddingOutOfBoundsError', function() {
+    describe('008/smartCrop/paddingOutOfBoundsError', function() {
         it(`Should pass if an excessive padding value is passed to the
             smartCrop filter`, async function() {
             // Arrange
@@ -230,8 +351,6 @@ describe('applyEdits()', function() {
             // Assert
             const imageHandler = new ImageHandler();
             await imageHandler.applyEdits(originalImage, edits).then((result) => {
-                //console.log(result);
-                const sharp = require('sharp');
                 const originalImageData = sharp(originalImage);
                 assert.deepEqual((originalImageData.options.input !== result.options.input), true)
             }).catch((err) => {
@@ -239,7 +358,7 @@ describe('applyEdits()', function() {
             })
         });
     });
-    describe('005/smartCrop/boundingBoxError', function() {
+    describe('009/smartCrop/boundingBoxError', function() {
         it(`Should pass if an excessive faceIndex value is passed to the
             smartCrop filter`, async function() {
             // Arrange
@@ -270,8 +389,6 @@ describe('applyEdits()', function() {
             // Assert
             const imageHandler = new ImageHandler();
             await imageHandler.applyEdits(originalImage, edits).then((result) => {
-                //console.log(result);
-                const sharp = require('sharp');
                 const originalImageData = sharp(originalImage);
                 assert.deepEqual((originalImageData.options.input !== result.options.input), true)
             }).catch((err) => {
@@ -279,7 +396,7 @@ describe('applyEdits()', function() {
             })
         });
     });
-    describe('006/smartCrop/faceIndexUndefined', function() {
+    describe('010/smartCrop/faceIndexUndefined', function() {
         it(`Should pass if a faceIndex value of undefined is passed to the
             smartCrop filter`, async function() {
             // Arrange
@@ -307,8 +424,6 @@ describe('applyEdits()', function() {
             // Assert
             const imageHandler = new ImageHandler();
             await imageHandler.applyEdits(originalImage, edits).then((result) => {
-                //console.log(result);
-                const sharp = require('sharp');
                 const originalImageData = sharp(originalImage);
                 assert.deepEqual((originalImageData.options.input !== result.options.input), true)
             }).catch((err) => {

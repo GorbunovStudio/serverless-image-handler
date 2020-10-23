@@ -40,7 +40,7 @@ rm -rf $build_dist_dir
 mkdir -p $build_dist_dir
 
 echo "------------------------------------------------------------------------------"
-echo "CloudFormation Template"
+echo "CloudFormation template with CDK and Constructs"
 echo "------------------------------------------------------------------------------"
 cp $template_dir/*.yaml $template_dist_dir/
 
@@ -56,7 +56,16 @@ replace="s/%%VERSION%%/$3/g"
 echo "sed -i -e $replace"
 sed -i -e $replace $template_dist_dir/*.yaml
 
-cp $template_dist_dir/*.yaml $build_dist_dir/
+# Disable for now
+# export BUCKET_NAME=$1
+# export SOLUTION_NAME=$2
+# export VERSION=$3
+
+# cp $template_dist_dir/*.yaml $build_dist_dir/
+# cd $source_dir/constructs
+# npm install
+# npm run build && cdk synth --asset-metadata false --path-metadata false --json true > serverless-image-handler.json
+# mv serverless-image-handler.json $template_dist_dir/serverless-image-handler.template
 
 echo "------------------------------------------------------------------------------"
 echo "Package the image-handler code"

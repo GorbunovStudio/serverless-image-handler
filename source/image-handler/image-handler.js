@@ -1,5 +1,5 @@
 /*********************************************************************************************************************
- *  Copyright 2019 Amazon.com, Inc. or its affiliates. All Rights Reserved.                                           *
+ *  Copyright 2020 Amazon.com, Inc. or its affiliates. All Rights Reserved.                                           *
  *                                                                                                                    *
  *  Licensed under the Apache License, Version 2.0 (the "License"). You may not use this file except in compliance    *
  *  with the License. A copy of the License is located at                                                             *
@@ -39,7 +39,7 @@ class ImageHandler {
      * Applies image modifications to the original image based on edits
      * specified in the ImageRequest.
      * @param {Buffer} originalImage - The original image.
-     * @param {Object} edits - The edits to be made to the original image.
+     * @param {object} edits - The edits to be made to the original image.
      */
     async applyEdits(originalImage, edits) {
         if (edits.resize === undefined) {
@@ -49,14 +49,11 @@ class ImageHandler {
 
         const image = sharp(originalImage, { failOnError: false });
         const metadata = await image.metadata();
-        const keys = Object.keys(edits);
-        const values = Object.values(edits);
 
         // Apply the image edits
-        for (let i = 0; i < keys.length; i++) {
-            const key = keys[i];
-            const value = values[i];
-            if (key === 'overlayWith') {
+        for (const editKey in edits) {
+            const value = edits[editKey];
+            if (editKey === 'overlayWith') {
                 let imageMetadata = metadata;
                 if (edits.resize) {
                     let imageBuffer = await image.toBuffer();
@@ -69,9 +66,9 @@ class ImageHandler {
 
                 let { options } = value;
                 if (options) {
-                    if (options.left) {
+                    if (options.left !== undefined) {
                         let left = options.left;
-                        if (left.endsWith('p')) {
+                        if (isNaN(left) && left.endsWith('p')) {
                             left = parseInt(left.replace('p', ''));
                             if (left < 0) {
                                 left = imageMetadata.width + (imageMetadata.width * left / 100) - overlayMetadata.width;
@@ -84,11 +81,11 @@ class ImageHandler {
                                 left = imageMetadata.width + left - overlayMetadata.width;
                             }
                         }
-                        options.left = parseInt(left);
+                        isNaN(left) ? delete options.left : options.left = left;
                     }
-                    if (options.top) {
+                    if (options.top !== undefined) {
                         let top = options.top;
-                        if (top.endsWith('p')) {
+                        if (isNaN(top) && top.endsWith('p')) {
                             top = parseInt(top.replace('p', ''));
                             if (top < 0) {
                                 top = imageMetadata.height + (imageMetadata.height * top / 100) - overlayMetadata.height;
@@ -101,13 +98,13 @@ class ImageHandler {
                                 top = imageMetadata.height + top - overlayMetadata.height;
                             }
                         }
-                        options.top = parseInt(top);
+                        isNaN(top) ? delete options.top : options.top = top;
                     }
                 }
 
                 const params = [{ ...options, input: overlay }];
                 image.composite(params);
-            } else if (key === 'smartCrop') {
+            } else if (editKey === 'smartCrop') {
                 const options = value;
                 const imageBuffer = await image.toBuffer();
                 const boundingBox = await this.getBoundingBox(imageBuffer, options.faceIndex);
@@ -122,7 +119,7 @@ class ImageHandler {
                     });
                 }
             } else {
-                image[key](value);
+                image[editKey](value);
             }
         }
         // Return the modified image
@@ -133,7 +130,11 @@ class ImageHandler {
      * Gets an image to be used as an overlay to the primary image from an
      * Amazon S3 bucket.
      * @param {string} bucket - The name of the bucket containing the overlay.
-     * @param {string} key - The keyname corresponding to the overlay.
+     * @param {string} key - The object keyname corresponding to the overlay.
+     * @param {number} wRatio - The width rate of the overlay image.
+     * @param {number} hRatio - The height rate of the overlay image.
+     * @param {number} alpha - The transparency alpha to the overlay.
+     * @param {object} sourceImageMetadata - The metadata of the source image.
      */
     async getOverlayImage(bucket, key, wRatio, hRatio, alpha, sourceImageMetadata) {
         const s3 = new AWS.S3();
@@ -173,13 +174,13 @@ class ImageHandler {
                     tile: true,
                     blend: 'dest-in'
                 }]).toBuffer();
-            return Promise.resolve(convertedImage);
+            return convertedImage;
         } catch (err) {
-            return Promise.reject({
+            throw {
                 status: err.statusCode ? err.statusCode : 500,
                 code: err.code,
                 message: err.message
-            })
+            };
         }
     }
 
@@ -216,21 +217,21 @@ class ImageHandler {
         const faceIdx = (faceIndex !== undefined) ? faceIndex : 0;
         try {
             const response = await rekognition.detectFaces(params).promise();
-            return Promise.resolve(response.FaceDetails[faceIdx].BoundingBox);
+            return response.FaceDetails[faceIdx].BoundingBox;
         } catch (err) {
             console.log(err);
             if (err.message === "Cannot read property 'BoundingBox' of undefined") {
-                return Promise.reject({
+                throw {
                     status: 400,
                     code: 'SmartCrop::FaceIndexOutOfRange',
                     message: 'You have provided a FaceIndex value that exceeds the length of the zero-based detectedFaces array. Please specify a value that is in-range.'
-                })
+                };
             } else {
-                return Promise.reject({
+                throw {
                     status: 500,
                     code: err.code,
                     message: err.message
-                })
+                };
             }
         }
     }

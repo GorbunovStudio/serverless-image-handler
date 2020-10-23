@@ -19,13 +19,12 @@ class ThumborMapping {
     // Constructor
     constructor() {
         this.edits = {};
-        this.sizingMethod;
     }
 
     /**
      * Initializer function for creating a new Thumbor mapping, used by the image
      * handler to perform image modifications based on legacy URL path requests.
-     * @param {Object} event - The request body.
+     * @param {object} event - The request body.
      */
     process(event) {
         // Setup
@@ -34,17 +33,23 @@ class ThumborMapping {
         const filetype = (this.path.split('.'))[(this.path.split('.')).length - 1];
 
         // Process the Dimensions
-        const dimPath = this.path.match(/[^\/]\d+x\d+/g);
+        const dimPath = this.path.match(/[^\/](\d+x\d+)|(0x\d+)/g);
         if (dimPath) {
+            // Assign dimenions from the first match only to avoid parsing dimension from image file names
             const dims = dimPath[0].split('x');
-            // Set only if the dimensions provided are valid
-            if (!isNaN(dims[0]) && !isNaN(dims[1])) {
-                this.edits.resize = {};
-                this.edits.resize.fit = 'fill';
+            const width = Number(dims[0]);
+            const height = Number(dims[1]);
 
-                // Assign dimenions from the first match only to avoid parsing dimension from image file names
-                this.edits.resize.width = Number(dims[0]);
-                this.edits.resize.height = Number(dims[1]);
+            // Set only if the dimensions provided are valid
+            if (!isNaN(width) && !isNaN(height)) {
+                this.edits.resize = {};
+
+                // If width or height is 0, fit would be inside.
+                if (width === 0 || height === 0) {
+                    this.edits.resize.fit = 'inside';
+                }
+                this.edits.resize.width = width === 0 ? null : width;
+                this.edits.resize.height = height === 0 ? null : height;
             }
         }
 
@@ -57,7 +62,6 @@ class ThumborMapping {
                 }
 
                 this.edits.resize.fit = 'inside';
-                this.sizingMethod = edit;
             } else if (edit.includes('filters:')) {
                 this.mapFilter(edit, filetype);
             }
@@ -69,7 +73,7 @@ class ThumborMapping {
     /**
      * Enables users to migrate their current image request model to the SIH solution,
      * without changing their legacy application code to accomodate new image requests.
-     * @param {String} path - The URL path extracted from the web request.
+     * @param {string} path - The URL path extracted from the web request.
      */
     parseCustomPath(path) {
         // Setup from the environment variables
@@ -88,28 +92,28 @@ class ThumborMapping {
     /**
      * Scanner function for matching supported Thumbor filters and converting their
      * capabilities into Sharp.js supported operations.
-     * @param {String} edit - The URL path filter.
-     * @param {String} filetype - The file type of the original image.
+     * @param {string} edit - The URL path filter.
+     * @param {string} filetype - The file type of the original image.
      */
     mapFilter(edit, filetype) {
         const matched = edit.match(/:(.+)\((.*)\)/);
-        const key = matched[1];
+        const editKey = matched[1];
         let value = matched[2];
         // Find the proper filter
-        if (key === ('autojpg')) {
+        if (editKey === ('autojpg')) {
             this.edits.toFormat = 'jpeg';
         }
-        else if (key === ('background_color')) {
+        else if (editKey === ('background_color')) {
             if (!ColorName[value]) {
                 value = `#${value}`
             }
             this.edits.flatten = { background: Color(value).object() };
         }
-        else if (key === ('blur')) {
+        else if (editKey === ('blur')) {
             const val = value.split(',');
             this.edits.blur = (val.length > 1) ? Number(val[1]) : Number(val[0]) / 2;
         }
-        else if (key === ('convolution')) {
+        else if (editKey === ('convolution')) {
             const arr = value.split(',');
             const strMatrix = (arr[0]).split(';');
             let matrix = [];
@@ -133,35 +137,36 @@ class ThumborMapping {
                 kernel: matrix
             }
         }
-        else if (key === ('equalize')) {
+        else if (editKey === ('equalize')) {
             this.edits.normalize = "true";
         }
-        else if (key === ('fill')) {
+        else if (editKey === ('fill')) {
             if (this.edits.resize === undefined) {
                 this.edits.resize = {};
             }
             if (!ColorName[value]) {
                 value = `#${value}`
             }
+            this.edits.resize.fit = 'contain';
             this.edits.resize.background = Color(value).object();
         }
-        else if (key === ('format')) {
+        else if (editKey === ('format')) {
             const formattedValue = value.replace(/[^0-9a-z]/gi, '').replace(/jpg/i, 'jpeg');
             const acceptedValues = ['heic', 'heif', 'jpeg', 'png', 'raw', 'tiff', 'webp'];
             if (acceptedValues.includes(formattedValue)) {
                 this.edits.toFormat = formattedValue;
             }
         }
-        else if (key === ('grayscale')) {
+        else if (editKey === ('grayscale')) {
             this.edits.grayscale = true;
         }
-        else if (key === ('no_upscale')) {
+        else if (editKey === ('no_upscale')) {
             if (this.edits.resize === undefined) {
                 this.edits.resize = {};
             }
             this.edits.resize.withoutEnlargement = true;
         }
-        else if (key === ('proportion')) {
+        else if (editKey === ('proportion')) {
             if (this.edits.resize === undefined) {
                 this.edits.resize = {};
             }
@@ -169,7 +174,7 @@ class ThumborMapping {
             this.edits.resize.width = Number(this.edits.resize.width * prop);
             this.edits.resize.height = Number(this.edits.resize.height * prop);
         }
-        else if (key === ('quality')) {
+        else if (editKey === ('quality')) {
             if (['jpg', 'jpeg'].includes(filetype)) {
                 this.edits.jpeg = { quality: Number(value) }
             } else if (filetype === 'png') {
@@ -182,7 +187,7 @@ class ThumborMapping {
                 this.edits.heif = { quality: Number(value) }
             }
         }
-        else if (key === ('rgb')) {
+        else if (editKey === ('rgb')) {
             const percentages = value.split(',');
             const values = [];
             percentages.forEach(function (percentage) {
@@ -192,35 +197,37 @@ class ThumborMapping {
             })
             this.edits.tint = { r: values[0], g: values[1], b: values[2] };
         }
-        else if (key === ('rotate')) {
+        else if (editKey === ('rotate')) {
             this.edits.rotate = Number(value);
         }
-        else if (key === ('sharpen')) {
+        else if (editKey === ('sharpen')) {
             const sh = value.split(',');
             const sigma = 1 + Number(sh[1]) / 2;
             this.edits.sharpen = sigma;
         }
-        else if (key === ('stretch')) {
+        else if (editKey === ('stretch')) {
             if (this.edits.resize === undefined) {
                 this.edits.resize = {};
             }
-            if (this.sizingMethod === undefined || this.sizingMethod !== 'fit-in') {
-                this.edits.resize.fit = "fill";
+
+            // If fit-in is not defined, fit parameter would be 'fill'.
+            if (this.edits.resize.fit !== 'inside') {
+                this.edits.resize.fit = 'fill';
             }
         }
-        else if (key === ('strip_exif')) {
+        else if (editKey === ('strip_exif')) {
             this.edits.rotate = 0;
         }
-        else if (key === ('strip_icc')) {
+        else if (editKey === ('strip_icc')) {
             this.edits.rotate = 0;
         }
-        else if (key === ('upscale')) {
+        else if (editKey === ('upscale')) {
             if (this.edits.resize === undefined) {
                 this.edits.resize = {};
             }
             this.edits.resize.fit = "inside"
         }
-        else if (key === ('watermark')) {
+        else if (editKey === ('watermark')) {
             const options = value.replace(/\s+/g, '').split(',');
             const bucket = options[0];
             const key = options[1];

@@ -1,5 +1,5 @@
 /*********************************************************************************************************************
- *  Copyright 2019 Amazon.com, Inc. or its affiliates. All Rights Reserved.                                           *
+ *  Copyright 2020 Amazon.com, Inc. or its affiliates. All Rights Reserved.                                           *
  *                                                                                                                    *
  *  Licensed under the Apache License, Version 2.0 (the "License"). You may not use this file except in compliance    *
  *  with the License. A copy of the License is located at                                                             *
@@ -37,6 +37,139 @@ describe('process()', function() {
                         fit: 'inside'
                     },
                     grayscale: true
+                }
+            };
+            assert.deepEqual(thumborMapping.edits, expectedResult.edits);
+        });
+    });
+    describe('002/resize/fit-in', function() {
+        it(`Should pass if the proper edit translations are applied and in the
+            correct order`, function() {
+            // Arrange
+            const event = {
+                path : "/fit-in/400x300/test-image-001.jpg"
+            }
+            // Act
+            const thumborMapping = new ThumborMapping();
+            thumborMapping.process(event);
+            // Assert
+            const expectedResult = {
+                edits: {
+                    resize: {
+                        width: 400,
+                        height: 300,
+                        fit: 'inside'
+                    }
+                }
+            };
+            assert.deepEqual(thumborMapping.edits, expectedResult.edits);
+        });
+    });
+    describe('003/resize/fit-in/noResizeValues', function() {
+        it(`Should pass if the proper edit translations are applied and in the
+            correct order`, function() {
+            // Arrange
+            const event = {
+                path : "/fit-in/test-image-001.jpg"
+            }
+            // Act
+            const thumborMapping = new ThumborMapping();
+            thumborMapping.process(event);
+            // Assert
+            const expectedResult = {
+                edits: {
+                    resize: { fit: 'inside' }
+                }
+            };
+            assert.deepEqual(thumborMapping.edits, expectedResult.edits);
+        });
+    });
+    describe('004/resize/not-fit-in', function() {
+        it(`Should pass if the proper edit translations are applied and in the
+            correct order`, function() {
+            // Arrange
+            const event = {
+                path : "/400x300/test-image-001.jpg"
+            }
+            // Act
+            const thumborMapping = new ThumborMapping();
+            thumborMapping.process(event);
+            // Assert
+            const expectedResult = {
+                edits: {
+                    resize: {
+                        width: 400,
+                        height: 300
+                    }
+                }
+            };
+            assert.deepEqual(thumborMapping.edits, expectedResult.edits);
+        });
+    });
+    describe('005/resize/widthIsZero', function() {
+        it(`Should pass if the proper edit translations are applied and in the
+            correct order`, function() {
+            // Arrange
+            const event = {
+                path : "/0x300/test-image-001.jpg"
+            }
+            // Act
+            const thumborMapping = new ThumborMapping();
+            thumborMapping.process(event);
+            // Assert
+            const expectedResult = {
+                edits: {
+                    resize: {
+                        width: null,
+                        height: 300,
+                        fit: 'inside'
+                    }
+                }
+            };
+            assert.deepEqual(thumborMapping.edits, expectedResult.edits);
+        });
+    });
+    describe('006/resize/heightIsZero', function() {
+        it(`Should pass if the proper edit translations are applied and in the
+            correct order`, function() {
+            // Arrange
+            const event = {
+                path : "/400x0/test-image-001.jpg"
+            }
+            // Act
+            const thumborMapping = new ThumborMapping();
+            thumborMapping.process(event);
+            // Assert
+            const expectedResult = {
+                edits: {
+                    resize: {
+                        width: 400,
+                        height: null,
+                        fit: 'inside'
+                    }
+                }
+            };
+            assert.deepEqual(thumborMapping.edits, expectedResult.edits);
+        });
+    });
+    describe('007/resize/widthAndHeightAreZero', function() {
+        it(`Should pass if the proper edit translations are applied and in the
+            correct order`, function() {
+            // Arrange
+            const event = {
+                path : "/0x0/test-image-001.jpg"
+            }
+            // Act
+            const thumborMapping = new ThumborMapping();
+            thumborMapping.process(event);
+            // Assert
+            const expectedResult = {
+                edits: {
+                    resize: {
+                        width: null,
+                        height: null,
+                        fit: 'inside'
+                    }
                 }
             };
             assert.deepEqual(thumborMapping.edits, expectedResult.edits);
@@ -222,7 +355,7 @@ describe('mapFilter()', function() {
             thumborMapping.mapFilter(edit, filetype);
             // Assert
             const expectedResult = {
-                edits: { resize: { background: { r: 255, g: 255, b: 255 } }}
+                edits: { resize: { background: { r: 255, g: 255, b: 255 }, fit: 'contain' }}
             };
             assert.deepEqual(thumborMapping, expectedResult);
         });
@@ -240,7 +373,7 @@ describe('mapFilter()', function() {
             thumborMapping.mapFilter(edit, filetype);
             // Assert
             const expectedResult = {
-                edits: { resize: { background: { r: 255, g: 255, b: 255 } }}
+                edits: { resize: { background: { r: 255, g: 255, b: 255 }, fit: 'contain' }}
             };
             assert.deepEqual(thumborMapping, expectedResult);
         });
@@ -360,7 +493,7 @@ describe('mapFilter()', function() {
             const thumborMapping = new ThumborMapping();
             thumborMapping.mapFilter(edit, filetype);
             // Assert
-            const actualResult = (typeof(thumborMapping.edits.resize) !== undefined);
+            const actualResult = thumborMapping.edits.resize !== undefined;
             const expectedResult = true;
             assert.deepEqual(actualResult, expectedResult);
         });
@@ -565,18 +698,25 @@ describe('mapFilter()', function() {
             const filetype = 'jpg';
             // Act
             const thumborMapping = new ThumborMapping();
-            thumborMapping.edits.resize = {};
+            thumborMapping.edits.resize = {
+                width: 300,
+                height: 400
+            };
             thumborMapping.mapFilter(edit, filetype);
             // Assert
             const expectedResult = {
                 edits: {
-                    resize: { fit: 'fill' }
+                    resize: {
+                        width: 300,
+                        height: 400,
+                        fit: 'fill'
+                    }
                 }
             };
             assert.deepEqual(thumborMapping, expectedResult);
         });
     });
-    describe('026/stretch/sizingMethodUndefined', function() {
+    describe('026/stretch/fit-in', function() {
         it(`Should pass if the filter is successfully translated from
             Thumbor:stretch()`, function() {
             // Arrange
@@ -584,20 +724,20 @@ describe('mapFilter()', function() {
             const filetype = 'jpg';
             // Act
             const thumborMapping = new ThumborMapping();
-            thumborMapping.edits.resize = {};
-            thumborMapping.sizingMethod = undefined;
+            thumborMapping.edits.resize = {
+                fit: 'inside'
+            };
             thumborMapping.mapFilter(edit, filetype);
             // Assert
             const expectedResult = {
                 edits: {
-                    resize: { fit: 'fill' }
-                },
-                sizingMethod: undefined
+                    resize: { fit: 'inside' }
+                }
             };
             assert.deepEqual(thumborMapping, expectedResult);
         });
     });
-    describe('027/stretch/sizingMethodNotFitIn', function() {
+    describe('027/stretch/fit-in/resizeDefined', function() {
         it(`Should pass if the filter is successfully translated from
             Thumbor:stretch()`, function() {
             // Arrange
@@ -605,41 +745,26 @@ describe('mapFilter()', function() {
             const filetype = 'jpg';
             // Act
             const thumborMapping = new ThumborMapping();
-            thumborMapping.edits.resize = {};
-            thumborMapping.sizingMethod = "cover";
+            thumborMapping.edits.resize = {
+                width: 400,
+                height: 300,
+                fit: 'inside'
+            };
             thumborMapping.mapFilter(edit, filetype);
             // Assert
             const expectedResult = {
                 edits: {
-                    resize: { fit: 'fill' }
-                },
-                sizingMethod: "cover"
+                    resize: {
+                        width: 400,
+                        height: 300,
+                        fit: 'inside'
+                    }
+                }
             };
             assert.deepEqual(thumborMapping, expectedResult);
         });
     });
-    describe('028/stretch/sizingMethodFitIn', function() {
-        it(`Should pass if the filter is successfully translated from
-            Thumbor:stretch()`, function() {
-            // Arrange
-            const edit = 'filters:stretch()';
-            const filetype = 'jpg';
-            // Act
-            const thumborMapping = new ThumborMapping();
-            thumborMapping.edits.resize = {};
-            thumborMapping.sizingMethod = "fit-in";
-            thumborMapping.mapFilter(edit, filetype);
-            // Assert
-            const expectedResult = {
-                edits: {
-                    resize: {}
-                },
-                sizingMethod: "fit-in"
-            };
-            assert.deepEqual(thumborMapping, expectedResult);
-        });
-    });
-    describe('029/strip_exif', function() {
+    describe('028/strip_exif', function() {
         it(`Should pass if the filter is successfully translated from
             Thumbor:strip_exif()`, function() {
             // Arrange
@@ -657,7 +782,7 @@ describe('mapFilter()', function() {
             assert.deepEqual(thumborMapping, expectedResult);
         });
     });
-    describe('030/strip_icc', function() {
+    describe('029/strip_icc', function() {
         it(`Should pass if the filter is successfully translated from
             Thumbor:strip_icc()`, function() {
             // Arrange
@@ -675,7 +800,7 @@ describe('mapFilter()', function() {
             assert.deepEqual(thumborMapping, expectedResult);
         });
     });
-    describe('031/upscale', function() {
+    describe('030/upscale', function() {
         it(`Should pass if the filter is successfully translated from
             Thumbor:upscale()`, function() {
             // Arrange
@@ -695,7 +820,7 @@ describe('mapFilter()', function() {
             assert.deepEqual(thumborMapping, expectedResult);
         });
     });
-    describe('032/upscale/resizeNotUndefined', function() {
+    describe('031/upscale/resizeNotUndefined', function() {
         it(`Should pass if the filter is successfully translated from
             Thumbor:upscale()`, function() {
             // Arrange

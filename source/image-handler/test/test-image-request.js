@@ -1,5 +1,5 @@
 /*********************************************************************************************************************
- *  Copyright 2019 Amazon.com, Inc. or its affiliates. All Rights Reserved.                                           *
+ *  Copyright 2020 Amazon.com, Inc. or its affiliates. All Rights Reserved.                                           *
  *                                                                                                                    *
  *  Licensed under the Apache License, Version 2.0 (the "License"). You may not use this file except in compliance    *
  *  with the License. A copy of the License is located at                                                             *
@@ -54,7 +54,43 @@ describe('setup()', function() {
             assert.deepEqual(imageRequest, expectedResult);
         });
     });
-    describe('002/thumborImageRequest', function() {
+    describe('002/defaultImageRequest/toFormat', function() {
+        it(`Should pass when a default image request is provided and populate
+            the ImageRequest object with the proper values`, async function() {
+            // Arrange
+            const event = {
+                path : '/eyJidWNrZXQiOiJ2YWxpZEJ1Y2tldCIsImtleSI6InZhbGlkS2V5IiwiZWRpdHMiOnsidG9Gb3JtYXQiOiJwbmcifX0=',
+            }
+            process.env = {
+                SOURCE_BUCKETS : "validBucket, validBucket2"
+            }
+            // ----
+            const S3 = require('aws-sdk/clients/s3');
+            const sinon = require('sinon');
+            const getObject = S3.prototype.getObject = sinon.stub();
+            getObject.withArgs({Bucket: 'validBucket', Key: 'validKey'}).returns({
+                promise: () => { return {
+                    Body: Buffer.from('SampleImageContent\n')
+                }}
+            })
+            // Act
+            const imageRequest = new ImageRequest();
+            await imageRequest.setup(event);
+            const expectedResult = {
+                requestType: 'Default',
+                bucket: 'validBucket',
+                key: 'validKey',
+                edits: { toFormat: 'png' },
+                outputFormat: 'png',
+                originalImage: Buffer.from('SampleImageContent\n'),
+                CacheControl: 'max-age=31536000,public',
+                ContentType: 'image/png'
+            }
+            // Assert
+            assert.deepEqual(imageRequest, expectedResult);
+        });
+    });
+    describe('003/thumborImageRequest', function() {
         it(`Should pass when a thumbor image request is provided and populate
             the ImageRequest object with the proper values`, async function() {
             // Arrange
@@ -89,7 +125,46 @@ describe('setup()', function() {
             assert.deepEqual(imageRequest, expectedResult);
         });
     });
-    describe('003/customImageRequest', function() {
+    describe('004/thumborImageRequest/quality', function() {
+        it(`Should pass when a thumbor image request is provided and populate
+            the ImageRequest object with the proper values`, async function() {
+            // Arrange
+            const event = {
+                path : "/filters:format(png)/filters:quality(50)/test-image-001.jpg"
+            }
+            process.env = {
+                SOURCE_BUCKETS : "allowedBucket001, allowedBucket002"
+            }
+            // ----
+            const S3 = require('aws-sdk/clients/s3');
+            const sinon = require('sinon');
+            const getObject = S3.prototype.getObject = sinon.stub();
+            getObject.withArgs({Bucket: 'allowedBucket001', Key: 'test-image-001.jpg'}).returns({
+                promise: () => { return {
+                    Body: Buffer.from('SampleImageContent\n')
+                }}
+            })
+            // Act
+            const imageRequest = new ImageRequest();
+            await imageRequest.setup(event);
+            const expectedResult = {
+                requestType: 'Thumbor',
+                bucket: 'allowedBucket001',
+                key: 'test-image-001.jpg',
+                edits: {
+                    toFormat: 'png',
+                    png: { quality: 50 }
+                },
+                originalImage: Buffer.from('SampleImageContent\n'),
+                CacheControl: 'max-age=31536000,public',
+                outputFormat: 'png',
+                ContentType: 'image/png'
+            }
+            // Assert
+            assert.deepEqual(imageRequest, expectedResult);
+        });
+    });
+    describe('005/customImageRequest', function() {
         it(`Should pass when a custom image request is provided and populate
             the ImageRequest object with the proper values`, async function() {
             // Arrange
@@ -135,7 +210,7 @@ describe('setup()', function() {
             assert.deepEqual(imageRequest, expectedResult);
         });
     });
-    describe('004/errorCase', function() {
+    describe('006/errorCase', function() {
         it(`Should pass when an error is caught`, async function() {
             // Assert
             const event = {
@@ -153,12 +228,12 @@ describe('setup()', function() {
             // Act
             const imageRequest = new ImageRequest();
             // Assert
-            await imageRequest.setup(event).then(() => {
-                console.log(data);
-            }).catch((err) => {
-                console.log(err);
-                assert.deepEqual(err.code, 'ImageBucket::CannotAccessBucket');
-            })
+            try {
+                await imageRequest.setup(event);
+            } catch (error) {
+                console.log(error);
+                assert.deepEqual(error.code, 'ImageBucket::CannotAccessBucket');
+            }
         });
     });
 });
@@ -203,10 +278,11 @@ describe('getOriginalImage()', function() {
             // Act
             const imageRequest = new ImageRequest();
             // Assert
-            imageRequest.getOriginalImage('invalidBucket', 'invalidKey').then((result) => {
-                assert.equal(typeof result, Error);
-                assert.equal(result.status, 404);
-            }).catch((err) => console.log(err));
+            try {
+               await  imageRequest.getOriginalImage('invalidBucket', 'invalidKey');
+            } catch (error) {
+                assert.equal(error.status, 404);
+            }
         });
     });
     describe('003/unknownError', async function() {
@@ -226,10 +302,11 @@ describe('getOriginalImage()', function() {
             // Act
             const imageRequest = new ImageRequest();
             // Assert
-            imageRequest.getOriginalImage('invalidBucket', 'invalidKey').then((result) => {
-                assert.equal(typeof result, Error);
-                assert.equal(result.status, 500);
-            }).catch((err) => console.log(err));
+            try {
+                await imageRequest.getOriginalImage('invalidBucket', 'invalidKey');
+            } catch (error) {
+                assert.equal(error.status, 500);
+            }
         });
     });
 });
@@ -269,13 +346,15 @@ describe('parseImageBucket()', function() {
             // Act
             const imageRequest = new ImageRequest();
             // Assert
-            assert.throws(function() {
+            try {
                 imageRequest.parseImageBucket(event, 'Default');
-            }, Object, {
-                status: 403,
-                code: 'ImageBucket::CannotAccessBucket',
-                message: 'The bucket you specified could not be accessed. Please check that the bucket is specified in your SOURCE_BUCKETS.'
-            });
+            } catch (error) {
+                assert.deepEqual(error, {
+                    status: 403,
+                    code: 'ImageBucket::CannotAccessBucket',
+                    message: 'The bucket you specified could not be accessed. Please check that the bucket is specified in your SOURCE_BUCKETS.'
+                });
+            }
         });
     });
     describe('003/defaultRequestType/bucketNotSpecifiedInRequest', function() {
@@ -346,13 +425,15 @@ describe('parseImageBucket()', function() {
             // Act
             const imageRequest = new ImageRequest();
             // Assert
-            assert.throws(function() {
+            try {
                 imageRequest.parseImageBucket(event, undefined);
-            }, Object, {
-                status: 400,
-                code: 'ImageBucket::CannotFindBucket',
-                message: 'The bucket you specified could not be found. Please check the spelling of the bucket name in your request.'
-            });
+            } catch (error) {
+                assert.deepEqual(error, {
+                    status: 404,
+                    code: 'ImageBucket::CannotFindBucket',
+                    message: 'The bucket you specified could not be found. Please check the spelling of the bucket name in your request.'
+                });
+            }
         });
     });
 });
@@ -415,7 +496,7 @@ describe('parseImageEdits()', function() {
                 rotate: 90,
                 grayscale: true
             }
-            assert.deepEqual((typeof result !== undefined), !undefined)
+            assert.deepEqual(result, expectedResult);
         });
     });
     describe('004/customRequestType', function() {
@@ -428,13 +509,15 @@ describe('parseImageEdits()', function() {
             // Act
             const imageRequest = new ImageRequest();
             // Assert
-            assert.throws(function() {
+            try {
                 imageRequest.parseImageEdits(event, undefined);
-            }, Object, {
-                status: 400,
-                code: 'ImageEdits::CannotParseEdits',
-                message: 'The edits you provided could not be parsed. Please check the syntax of your request and refer to the documentation for additional guidance.'
-            });
+            } catch (error) {
+                assert.deepEqual(error, {
+                    status: 400,
+                    code: 'ImageEdits::CannotParseEdits',
+                    message: 'The edits you provided could not be parsed. Please check the syntax of your request and refer to the documentation for additional guidance.'
+                });
+            }
         });
     });
 });
@@ -458,7 +541,21 @@ describe('parseImageKey()', function() {
             assert.deepEqual(result, expectedResult);
         });
     });
-    describe('002/thumborRequestType', function() {
+    describe('002/defaultRequestType/withSlashRequest', function () {
+        it(`should read image requests with base64 encoding having slash`, function () {
+            const event = {
+                path : '/eyJidWNrZXQiOiJlbGFzdGljYmVhbnN0YWxrLXVzLWVhc3QtMi0wNjY3ODQ4ODU1MTgiLCJrZXkiOiJlbnYtcHJvZC9nY2MvbGFuZGluZ3BhZ2UvMV81N19TbGltTl9MaWZ0LUNvcnNldC1Gb3ItTWVuLVNOQVAvYXR0YWNobWVudHMvZmZjMWYxNjAtYmQzOC00MWU4LThiYWQtZTNhMTljYzYxZGQzX1/Ys9mE2YrZhSDZhNmK2YHYqiAoMikuanBnIiwiZWRpdHMiOnsicmVzaXplIjp7IndpZHRoIjo0ODAsImZpdCI6ImNvdmVyIn19fQ=='
+            }
+            // Act
+            const imageRequest = new ImageRequest();
+            const result = imageRequest.parseImageKey(event, 'Default');
+            // Assert
+            const expectedResult = 'env-prod/gcc/landingpage/1_57_SlimN_Lift-Corset-For-Men-SNAP/attachments/ffc1f160-bd38-41e8-8bad-e3a19cc61dd3__سليم ليفت (2).jpg';
+            assert.deepEqual(result, expectedResult);
+
+        })
+    });
+    describe('003/thumborRequestType', function() {
         it(`Should pass if an image key value is provided in the thumbor
             request format`, function() {
             // Arrange
@@ -473,7 +570,7 @@ describe('parseImageKey()', function() {
             assert.deepEqual(result, expectedResult);
         });
     });
-    describe('003/customRequestType', function() {
+    describe('004/customRequestType', function() {
         it(`Should pass if an image key value is provided in the custom
             request format`, function() {
             // Arrange
@@ -488,7 +585,7 @@ describe('parseImageKey()', function() {
             assert.deepEqual(result, expectedResult);
         });
     });
-    describe('004/elseCondition', function() {
+    describe('005/elseCondition', function() {
         it(`Should throw an error if an unrecognized requestType is passed into the
             function as a parameter`, function() {
             // Arrange
@@ -498,13 +595,15 @@ describe('parseImageKey()', function() {
             // Act
             const imageRequest = new ImageRequest();
             // Assert
-            assert.throws(function() {
+            try {
                 imageRequest.parseImageKey(event, undefined);
-            }, Object, {
-                status: 400,
-                code: 'ImageEdits::CannotFindImage',
-                message: 'The image you specified could not be found. Please check your request syntax as well as the bucket you specified to ensure it exists.'
-            });
+            } catch (error) {
+                assert.deepEqual(error, {
+                    status: 404,
+                    code: 'ImageEdits::CannotFindImage',
+                    message: 'The image you specified could not be found. Please check your request syntax as well as the bucket you specified to ensure it exists.'
+                });
+            }
         });
     });
 });
@@ -572,13 +671,15 @@ describe('parseRequestType()', function() {
             // Act
             const imageRequest = new ImageRequest();
             // Assert
-            assert.throws(function() {
-                const a = imageRequest.parseRequestType(event);
-            }, Object, {
-                status: 400,
-                code: 'RequestType::CannotDetermineRequestType',
-                message: 'The type of request you are making could not be properly routed. Please check your request syntax and refer to the documentation for additional guidance.'
-            });
+            try {
+                imageRequest.parseRequestType(event);
+            } catch (error) {
+                assert.deepEqual(error, {
+                    status: 400,
+                    code: 'RequestTypeError',
+                    message: 'The type of request you are making could not be processed. Please ensure that your original image is of a supported file type (jpg, png, tiff, webp) and that your image request is provided in the correct syntax. Refer to the documentation for additional guidance on forming image requests.'
+                });
+            }
         });
     });
 });
@@ -615,13 +716,15 @@ describe('decodeRequest()', function() {
             // Act
             const imageRequest = new ImageRequest();
             // Assert
-            assert.throws(function() {
+            try {
                 imageRequest.decodeRequest(event);
-            }, Object, {
-                status: 400,
-                code: 'DecodeRequest::CannotDecodeRequest',
-                message: 'The image request you provided could not be decoded. Please check that your request is base64 encoded properly and refer to the documentation for additional guidance.'
-            });
+            } catch (error) {
+                assert.deepEqual(error, {
+                    status: 400,
+                    code: 'DecodeRequest::CannotDecodeRequest',
+                    message: 'The image request you provided could not be decoded. Please check that your request is base64 encoded properly and refer to the documentation for additional guidance.'
+                });
+            }
         });
     });
     describe('003/noPathSpecified', function() {
@@ -632,13 +735,15 @@ describe('decodeRequest()', function() {
             // Act
             const imageRequest = new ImageRequest();
             // Assert
-            assert.throws(function() {
+            try {
                 imageRequest.decodeRequest(event);
-            }, Object, {
-                status: 400,
-                code: 'DecodeRequest::CannotReadPath',
-                message: 'The URL path you provided could not be read. Please ensure that it is properly formed according to the solution documentation.'
-            });
+            } catch (error) {
+                assert.deepEqual(error, {
+                    status: 400,
+                    code: 'DecodeRequest::CannotReadPath',
+                    message: 'The URL path you provided could not be read. Please ensure that it is properly formed according to the solution documentation.'
+                });
+            }
         });
     });
 });
@@ -670,13 +775,15 @@ describe('getAllowedSourceBuckets()', function() {
             // Act
             const imageRequest = new ImageRequest();
             // Assert
-            assert.throws(function() {
+            try {
                 imageRequest.getAllowedSourceBuckets();
-            }, Object, {
-                status: 400,
-                code: 'GetAllowedSourceBuckets::NoSourceBuckets',
-                message: 'The SOURCE_BUCKETS variable could not be read. Please check that it is not empty and contains at least one source bucket, or multiple buckets separated by commas. Spaces can be provided between commas and bucket names, these will be automatically parsed out when decoding.'
-            });
+            } catch (error) {
+                assert.deepEqual(error, {
+                    status: 400,
+                    code: 'GetAllowedSourceBuckets::NoSourceBuckets',
+                    message: 'The SOURCE_BUCKETS variable could not be read. Please check that it is not empty and contains at least one source bucket, or multiple buckets separated by commas. Spaces can be provided between commas and bucket names, these will be automatically parsed out when decoding.'
+                });
+            }
         });
     });
 });
@@ -689,7 +796,7 @@ describe('getOutputFormat()', function () {
         it(`Should pass if it returns "webp" for an accepts header which includes webp`, function () {
             // Arrange
             process.env = {
-                AUTO_WEBP: true
+                AUTO_WEBP: 'Yes'
             };
             const event = {
                 headers: {
@@ -698,7 +805,7 @@ describe('getOutputFormat()', function () {
             };
             // Act
             const imageRequest = new ImageRequest();
-            var result = imageRequest.getOutputFormat(event);
+            const result = imageRequest.getOutputFormat(event);
             // Assert
             assert.deepEqual(result, 'webp');
         });
@@ -707,7 +814,7 @@ describe('getOutputFormat()', function () {
         it(`Should pass if it returns null for an accepts header which does not include webp`, function () {
             // Arrange
             process.env = {
-                AUTO_WEBP: true
+                AUTO_WEBP: 'Yes'
             };
             const event = {
                 headers: {
@@ -716,7 +823,7 @@ describe('getOutputFormat()', function () {
             };
             // Act
             const imageRequest = new ImageRequest();
-            var result = imageRequest.getOutputFormat(event);
+            const result = imageRequest.getOutputFormat(event);
             // Assert
             assert.deepEqual(result, null);
         });
@@ -725,7 +832,7 @@ describe('getOutputFormat()', function () {
         it(`Should pass if it returns null when AUTO_WEBP is disabled with accepts header including webp`, function () {
             // Arrange
             process.env = {
-                AUTO_WEBP: false
+                AUTO_WEBP: 'No'
             };
             const event = {
                 headers: {
@@ -734,7 +841,7 @@ describe('getOutputFormat()', function () {
             };
             // Act
             const imageRequest = new ImageRequest();
-            var result = imageRequest.getOutputFormat(event);
+            const result = imageRequest.getOutputFormat(event);
             // Assert
             assert.deepEqual(result, null);
         });
@@ -749,7 +856,7 @@ describe('getOutputFormat()', function () {
             };
             // Act
             const imageRequest = new ImageRequest();
-            var result = imageRequest.getOutputFormat(event);
+            const result = imageRequest.getOutputFormat(event);
             // Assert
             assert.deepEqual(result, null);
         });
