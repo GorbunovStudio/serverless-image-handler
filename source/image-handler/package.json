@@ -8,24 +8,21 @@
   "version": "5.0.0",
   "private": true,
   "dependencies": {
-    "sharp": "^0.25.4",
+    "@aws-sdk/client-rekognition": "^3.1173.0",
+    "@aws-sdk/client-s3": "^3.1173.0",
     "color": "3.1.2",
-    "color-name": "1.1.4"
+    "color-name": "1.1.4",
+    "sharp": "^0.35.5"
   },
   "devDependencies": {
-    "aws-sdk": "2.631.0",
-    "aws-sdk-mock": "^4.4.0",
-    "mocha": "^6.1.4",
-    "sinon": "^7.3.2",
-    "nyc": "^14.0.0"
+    "mocha": "^11.7.0",
+    "nyc": "^17.1.0",
+    "sinon": "^21.0.0"
   },
   "scripts": {
-    "pretest": "npm run build:init && npm install",
     "test": "nyc --reporter=html --reporter=text mocha",
-    "build:init": "rm -rf package-lock.json dist/ node_modules/",
-    "build:zip": "zip -rq image-handler.zip .",
-    "build:dist": "mkdir dist && mv image-handler.zip dist/",
-    "build": "npm run build:init && npm install --arch=x64 --platform=linux --production && npm run build:zip && npm run build:dist"
+    "build": "npm ci --omit=dev --include=optional --ignore-scripts --os=linux --cpu=x64 --libc=glibc && npm run build:zip",
+    "build:zip": "mkdir -p dist && rm -f dist/image-handler.zip && zip -rq dist/image-handler.zip *.js node_modules"
   },
   "license": "Apache-2.0"
 }

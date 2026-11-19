@@ -11,8 +11,11 @@
  *  and limitations under the License.                                                                                *
  *********************************************************************************************************************/
 
-const AWS = require('aws-sdk');
+const { DetectFacesCommand, RekognitionClient } = require('@aws-sdk/client-rekognition');
 const sharp = require('sharp');
+const getImageObject = require('./s3-image');
+
+const rekognition = new RekognitionClient();
 
 class ImageHandler {
 
@@ -47,7 +50,7 @@ class ImageHandler {
             edits.resize.fit = 'inside';
         }
 
-        const image = sharp(originalImage, { failOnError: false });
+        const image = sharp(originalImage, { failOn: 'none' });
         const metadata = await image.metadata();
 
         // Apply the image edits
@@ -137,11 +140,9 @@ class ImageHandler {
      * @param {object} sourceImageMetadata - The metadata of the source image.
      */
     async getOverlayImage(bucket, key, wRatio, hRatio, alpha, sourceImageMetadata) {
-        const s3 = new AWS.S3();
-        const params = { Bucket: bucket, Key: key };
         try {
             const { width, height } = sourceImageMetadata;
-            const overlayImage = await s3.getObject(params).promise();
+            const overlayImage = await getImageObject(bucket, key);
             let resize = {
                 fit: 'inside'
             }
@@ -177,8 +178,8 @@ class ImageHandler {
             return convertedImage;
         } catch (err) {
             throw {
-                status: err.statusCode ? err.statusCode : 500,
-                code: err.code,
+                status: err.$metadata?.httpStatusCode ?? 500,
+                code: err.$metadata ? err.name : err.code,
                 message: err.message
             };
         }
@@ -212,28 +213,30 @@ class ImageHandler {
      * confidence decreases for detected faces within the image.
      */
     async getBoundingBox(imageBuffer, faceIndex) {
-        const rekognition = new AWS.Rekognition();
         const params = { Image: { Bytes: imageBuffer }};
         const faceIdx = (faceIndex !== undefined) ? faceIndex : 0;
+        let response;
         try {
-            const response = await rekognition.detectFaces(params).promise();
-            return response.FaceDetails[faceIdx].BoundingBox;
+            response = await rekognition.send(new DetectFacesCommand(params));
         } catch (err) {
             console.log(err);
-            if (err.message === "Cannot read property 'BoundingBox' of undefined") {
-                throw {
-                    status: 400,
-                    code: 'SmartCrop::FaceIndexOutOfRange',
-                    message: 'You have provided a FaceIndex value that exceeds the length of the zero-based detectedFaces array. Please specify a value that is in-range.'
-                };
-            } else {
-                throw {
-                    status: 500,
-                    code: err.code,
-                    message: err.message
-                };
-            }
+            throw {
+                status: 500,
+                code: err.$metadata ? err.name : err.code,
+                message: err.message
+            };
         }
+
+        const face = response.FaceDetails?.[faceIdx];
+        if (!face) {
+            throw {
+                status: 400,
+                code: 'SmartCrop::FaceIndexOutOfRange',
+                message: 'You have provided a FaceIndex value that exceeds the length of the zero-based detectedFaces array. Please specify a value that is in-range.'
+            };
+        }
+
+        return face.BoundingBox;
     }
 }
 

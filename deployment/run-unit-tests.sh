@@ -10,4 +10,5 @@ npm install
 npm test
 
 cd $source_dir/image-handler
+npm ci
 npm test

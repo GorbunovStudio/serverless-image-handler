@@ -1,591 +1,150 @@
-/*********************************************************************************************************************
- *  Copyright 2020 Amazon.com, Inc. or its affiliates. All Rights Reserved.                                           *
- *                                                                                                                    *
- *  Licensed under the Apache License, Version 2.0 (the "License"). You may not use this file except in compliance    *
- *  with the License. A copy of the License is located at                                                             *
- *                                                                                                                    *
- *      http://www.apache.org/licenses/LICENSE-2.0                                                                    *
- *                                                                                                                    *
- *  or in the 'license' file accompanying this file. This file is distributed on an 'AS IS' BASIS, WITHOUT WARRANTIES *
- *  OR CONDITIONS OF ANY KIND, express or implied. See the License for the specific language governing permissions    *
- *  and limitations under the License.                                                                                *
- *********************************************************************************************************************/
+// Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
+// SPDX-License-Identifier: Apache-2.0
 
-const ImageHandler = require('../image-handler');
+const assert = require('node:assert/strict');
+const { GetObjectCommand, S3Client } = require('@aws-sdk/client-s3');
+const { DetectFacesCommand, RekognitionClient } = require('@aws-sdk/client-rekognition');
 const sharp = require('sharp');
-let assert = require('assert');
+const sinon = require('sinon');
+const ImageHandler = require('../image-handler');
 
-// ----------------------------------------------------------------------------
-// [async] process()
-// ----------------------------------------------------------------------------
-describe('process()', function() {
-    describe('001/default', function() {
-        it(`Should pass if the output image is different from the input image with edits applied`, async function() {
-            // Arrange
-            const sinon = require('sinon');
-            // ---- Amazon S3 stub
-            const S3 = require('aws-sdk/clients/s3');
-            const getObject = S3.prototype.getObject = sinon.stub();
-            getObject.returns({
-                promise: () => { return {
-                  Body: Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==', 'base64')
-                }}
-            })
-            // ----
-            const request = {
-                requestType: "default",
-                bucket: "sample-bucket",
-                key: "sample-image-001.jpg",
-                edits: {
-                    grayscale: true,
-                    flip: true
-                },
-                originalImage: Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==', 'base64')
-            }
-            // Act
-            const imageHandler = new ImageHandler();
-            const result = await imageHandler.process(request);
-            // Assert
-            assert.deepEqual((request.originalImage !== result), true);
-        });
-    });
-    describe('002/withToFormat', function() {
-        it(`Should pass if the output image is in a different format than the original image`, async function() {
-            // Arrange
-            const sinon = require('sinon');
-            // ---- Amazon S3 stub
-            const S3 = require('aws-sdk/clients/s3');
-            const getObject = S3.prototype.getObject = sinon.stub();
-            getObject.returns({
-                promise: () => { return {
-                  Body: Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==', 'base64')
-                }}
-            })
-            // ----
-            const request = {
-                requestType: "default",
-                bucket: "sample-bucket",
-                key: "sample-image-001.jpg",
-                outputFormat: "png",
-                edits: {
-                    grayscale: true,
-                    flip: true
-                },
-                originalImage: Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==', 'base64')
-            }
-            // Act
-            const imageHandler = new ImageHandler();
-            const result = await imageHandler.process(request);
-            // Assert
-            assert.deepEqual((request.originalImage !== result), true);
-        });
-    });
-    describe('003/noEditsSpecified', function() {
-        it(`Should pass if no edits are specified and the original image is returned`, async function() {
-            // Arrange
-            const sinon = require('sinon');
-            // ---- Amazon S3 stub
-            const S3 = require('aws-sdk/clients/s3');
-            const getObject = S3.prototype.getObject = sinon.stub();
-            getObject.returns({
-                promise: () => { return {
-                  Body: Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==', 'base64')
-                }}
-            })
-            // ----
-            const request = {
-                requestType: "default",
-                bucket: "sample-bucket",
-                key: "sample-image-001.jpg",
-                originalImage: Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==', 'base64')
-            }
-            // Act
-            const imageHandler = new ImageHandler();
-            const result = await imageHandler.process(request);
-            // Assert
-            assert.deepEqual(result, 'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==');
-        });
-    });
-});
+function solidImage(width, height, background) {
+    return sharp({ create: { width, height, channels: 4, background } }).png().toBuffer();
+}
 
-// ----------------------------------------------------------------------------
-// [async] applyEdits()
-// ----------------------------------------------------------------------------
-describe('applyEdits()', function() {
-    describe('001/standardEdits', function() {
-        it(`Should pass if a series of standard edits are provided to the
-            function`, async function() {
-            // Arrange
-            const originalImage = Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==', 'base64');
-            const edits = {
-                grayscale: true,
-                flip: true
-            }
-            // Act
-            const imageHandler = new ImageHandler();
-            const result = await imageHandler.applyEdits(originalImage, edits);
-            // Assert
-            const expectedResult1 = (result.options.greyscale);
-            const expectedResult2 = (result.options.flip);
-            const combinedResults = (expectedResult1 && expectedResult2);
-            assert.deepEqual(combinedResults, true);
-        });
-    });
-    describe('002/overlay', function() {
-        it(`Should pass if an edit with the overlayWith keyname is passed to
-            the function`, async function() {
-            // Arrange
-            const sinon = require('sinon');
-            // ---- Amazon S3 stub
-            const S3 = require('aws-sdk/clients/s3');
-            const getObject = S3.prototype.getObject = sinon.stub();
-            getObject.returns({
-                promise: () => { return {
-                  Body: Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==', 'base64')
-                }}
-            })
-            // Act
-            const originalImage = Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==', 'base64');
-            const edits = {
-                overlayWith: {
-                    bucket: 'aaa',
-                    key: 'bbb'
-                }
-            }
-            // Assert
-            const imageHandler = new ImageHandler();
-            const result = await imageHandler.applyEdits(originalImage, edits);
-            assert.deepEqual(result.options.input.buffer, originalImage);
-        });
-    });
-    describe('003/overlay/options/smallerThanZero', function() {
-        it(`Should pass if an edit with the overlayWith keyname is passed to
-            the function`, async function() {
-            // Arrange
-            const sinon = require('sinon');
-            // ---- Amazon S3 stub
-            const S3 = require('aws-sdk/clients/s3');
-            const getObject = S3.prototype.getObject = sinon.stub();
-            getObject.returns({
-                promise: () => { return {
-                  Body: Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==', 'base64')
-                }}
-            })
-            // Act
-            const originalImage = Buffer.from('/9j/4AAQSkZJRgABAQAAAQABAAD/2wBDAAEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQH/2wBDAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQH/wAARCAAEAAQDAREAAhEBAxEB/8QAFAABAAAAAAAAAAAAAAAAAAAACv/EABQQAQAAAAAAAAAAAAAAAAAAAAD/xAAUAQEAAAAAAAAAAAAAAAAAAAAA/8QAFBEBAAAAAAAAAAAAAAAAAAAAAP/aAAwDAQACEQMRAD8AfwD/2Q==', 'base64');
-            const edits = {
-                overlayWith: {
-                    bucket: 'aaa',
-                    key: 'bbb',
-                    options: {
-                        left: '-1',
-                        top: '-1'
-                    }
-                }
-            }
-            // Assert
-            const imageHandler = new ImageHandler();
-            const result = await imageHandler.applyEdits(originalImage, edits);
-            assert.deepEqual(result.options.input.buffer, originalImage);
-        });
-    });
-    describe('004/overlay/options/greaterThanZero', function() {
-        it(`Should pass if an edit with the overlayWith keyname is passed to
-            the function`, async function() {
-            // Arrange
-            const sinon = require('sinon');
-            // ---- Amazon S3 stub
-            const S3 = require('aws-sdk/clients/s3');
-            const getObject = S3.prototype.getObject = sinon.stub();
-            getObject.returns({
-                promise: () => { return {
-                  Body: Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==', 'base64')
-                }}
-            })
-            // Act
-            const originalImage = Buffer.from('/9j/4AAQSkZJRgABAQAAAQABAAD/2wBDAAEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQH/2wBDAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQH/wAARCAAEAAQDAREAAhEBAxEB/8QAFAABAAAAAAAAAAAAAAAAAAAACv/EABQQAQAAAAAAAAAAAAAAAAAAAAD/xAAUAQEAAAAAAAAAAAAAAAAAAAAA/8QAFBEBAAAAAAAAAAAAAAAAAAAAAP/aAAwDAQACEQMRAD8AfwD/2Q==', 'base64');
-            const edits = {
-                overlayWith: {
-                    bucket: 'aaa',
-                    key: 'bbb',
-                    options: {
-                        left: '1',
-                        top: '1'
-                    }
-                }
-            }
-            // Assert
-            const imageHandler = new ImageHandler();
-            const result = await imageHandler.applyEdits(originalImage, edits);
-            assert.deepEqual(result.options.input.buffer, originalImage);
-        });
-    });
-    describe('005/overlay/options/percentage/greaterThanZero', function() {
-        it(`Should pass if an edit with the overlayWith keyname is passed to
-            the function`, async function() {
-            // Arrange
-            const sinon = require('sinon');
-            // ---- Amazon S3 stub
-            const S3 = require('aws-sdk/clients/s3');
-            const getObject = S3.prototype.getObject = sinon.stub();
-            getObject.returns({
-                promise: () => { return {
-                  Body: Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==', 'base64')
-                }}
-            })
-            // Act
-            const originalImage = Buffer.from('/9j/4AAQSkZJRgABAQAAAQABAAD/2wBDAAEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQH/2wBDAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQH/wAARCAAEAAQDAREAAhEBAxEB/8QAFAABAAAAAAAAAAAAAAAAAAAACv/EABQQAQAAAAAAAAAAAAAAAAAAAAD/xAAUAQEAAAAAAAAAAAAAAAAAAAAA/8QAFBEBAAAAAAAAAAAAAAAAAAAAAP/aAAwDAQACEQMRAD8AfwD/2Q==', 'base64');
-            const edits = {
-                overlayWith: {
-                    bucket: 'aaa',
-                    key: 'bbb',
-                    options: {
-                        left: '50p',
-                        top: '50p'
-                    }
-                }
-            }
-            // Assert
-            const imageHandler = new ImageHandler();
-            const result = await imageHandler.applyEdits(originalImage, edits);
-            assert.deepEqual(result.options.input.buffer, originalImage);
-        });
-    });
-    describe('006/overlay/options/percentage/smallerThanZero', function() {
-        it(`Should pass if an edit with the overlayWith keyname is passed to
-            the function`, async function() {
-            // Arrange
-            const sinon = require('sinon');
-            // ---- Amazon S3 stub
-            const S3 = require('aws-sdk/clients/s3');
-            const getObject = S3.prototype.getObject = sinon.stub();
-            getObject.returns({
-                promise: () => { return {
-                  Body: Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==', 'base64')
-                }}
-            })
-            // Act
-            const originalImage = Buffer.from('/9j/4AAQSkZJRgABAQAAAQABAAD/2wBDAAEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQH/2wBDAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQH/wAARCAAEAAQDAREAAhEBAxEB/8QAFAABAAAAAAAAAAAAAAAAAAAACv/EABQQAQAAAAAAAAAAAAAAAAAAAAD/xAAUAQEAAAAAAAAAAAAAAAAAAAAA/8QAFBEBAAAAAAAAAAAAAAAAAAAAAP/aAAwDAQACEQMRAD8AfwD/2Q==', 'base64');
-            const edits = {
-                overlayWith: {
-                    bucket: 'aaa',
-                    key: 'bbb',
-                    options: {
-                        left: '-50p',
-                        top: '-50p'
-                    }
-                }
-            }
-            // Assert
-            const imageHandler = new ImageHandler();
-            const result = await imageHandler.applyEdits(originalImage, edits);
-            assert.deepEqual(result.options.input.buffer, originalImage);
-        });
-    });
-    describe('007/smartCrop', function() {
-        it(`Should pass if an edit with the smartCrop keyname is passed to
-            the function`, async function() {
-            // Arrange
-            const sinon = require('sinon');
-            // ---- Amazon Rekognition stub
-            const rekognition = require('aws-sdk/clients/rekognition');
-            const detectFaces = rekognition.prototype.detectFaces = sinon.stub();
-            detectFaces.returns({
-                promise: () => { return {
-                    FaceDetails: [{
-                        BoundingBox: {
-                            Height: 0.18,
-                            Left: 0.55,
-                            Top: 0.33,
-                            Width: 0.23
-                        }
-                    }]
-                }}
-            })
-            // Act
-            const originalImage = Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==', 'base64');
-            const edits = {
-                smartCrop: {
-                    faceIndex: 0,
-                    padding: 0
-                }
-            }
-            // Assert
-            const imageHandler = new ImageHandler();
-            await imageHandler.applyEdits(originalImage, edits).then((result) => {
-                const originalImageData = sharp(originalImage);
-                assert.deepEqual((originalImageData.options.input !== result.options.input), true)
-            }).catch((err) => {
-                console.log(err)
-            })
-        });
-    });
-    describe('008/smartCrop/paddingOutOfBoundsError', function() {
-        it(`Should pass if an excessive padding value is passed to the
-            smartCrop filter`, async function() {
-            // Arrange
-            const sinon = require('sinon');
-            // ---- Amazon Rekognition stub
-            const rekognition = require('aws-sdk/clients/rekognition');
-            const detectFaces = rekognition.prototype.detectFaces = sinon.stub();
-            detectFaces.returns({
-                promise: () => { return {
-                    FaceDetails: [{
-                        BoundingBox: {
-                            Height: 0.18,
-                            Left: 0.55,
-                            Top: 0.33,
-                            Width: 0.23
-                        }
-                    }]
-                }}
-            })
-            // Act
-            const originalImage = Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==', 'base64');
-            const edits = {
-                smartCrop: {
-                    faceIndex: 0,
-                    padding: 80
-                }
-            }
-            // Assert
-            const imageHandler = new ImageHandler();
-            await imageHandler.applyEdits(originalImage, edits).then((result) => {
-                const originalImageData = sharp(originalImage);
-                assert.deepEqual((originalImageData.options.input !== result.options.input), true)
-            }).catch((err) => {
-                console.log(err)
-            })
-        });
-    });
-    describe('009/smartCrop/boundingBoxError', function() {
-        it(`Should pass if an excessive faceIndex value is passed to the
-            smartCrop filter`, async function() {
-            // Arrange
-            const sinon = require('sinon');
-            // ---- Amazon Rekognition stub
-            const rekognition = require('aws-sdk/clients/rekognition');
-            const detectFaces = rekognition.prototype.detectFaces = sinon.stub();
-            detectFaces.returns({
-                promise: () => { return {
-                    FaceDetails: [{
-                        BoundingBox: {
-                            Height: 0.18,
-                            Left: 0.55,
-                            Top: 0.33,
-                            Width: 0.23
-                        }
-                    }]
-                }}
-            })
-            // Act
-            const originalImage = Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==', 'base64');
-            const edits = {
-                smartCrop: {
-                    faceIndex: 10,
-                    padding: 0
-                }
-            }
-            // Assert
-            const imageHandler = new ImageHandler();
-            await imageHandler.applyEdits(originalImage, edits).then((result) => {
-                const originalImageData = sharp(originalImage);
-                assert.deepEqual((originalImageData.options.input !== result.options.input), true)
-            }).catch((err) => {
-                console.log(err)
-            })
-        });
-    });
-    describe('010/smartCrop/faceIndexUndefined', function() {
-        it(`Should pass if a faceIndex value of undefined is passed to the
-            smartCrop filter`, async function() {
-            // Arrange
-            const sinon = require('sinon');
-            // ---- Amazon Rekognition stub
-            const rekognition = require('aws-sdk/clients/rekognition');
-            const detectFaces = rekognition.prototype.detectFaces = sinon.stub();
-            detectFaces.returns({
-                promise: () => { return {
-                    FaceDetails: [{
-                        BoundingBox: {
-                            Height: 0.18,
-                            Left: 0.55,
-                            Top: 0.33,
-                            Width: 0.23
-                        }
-                    }]
-                }}
-            })
-            // Act
-            const originalImage = Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==', 'base64');
-            const edits = {
-                smartCrop: true
-            }
-            // Assert
-            const imageHandler = new ImageHandler();
-            await imageHandler.applyEdits(originalImage, edits).then((result) => {
-                const originalImageData = sharp(originalImage);
-                assert.deepEqual((originalImageData.options.input !== result.options.input), true)
-            }).catch((err) => {
-                console.log(err)
-            })
-        });
-    });
-});
+function stubImageDownload() {
+    const send = sinon.stub(S3Client.prototype, 'send');
+    return send.withArgs(sinon.match.instanceOf(GetObjectCommand)
+        .and(sinon.match.has('input', { Bucket: 'overlays', Key: 'watermark.png' })));
+}
 
-// ----------------------------------------------------------------------------
-// [async] getOverlayImage()
-// ----------------------------------------------------------------------------
-describe('getOverlayImage()', function() {
-    describe('001/validParameters', function() {
-        it(`Should pass if the proper bucket name and key are supplied,
-            simulating an image file that can be retrieved`, async function() {
-            // Arrange
-            const S3 = require('aws-sdk/clients/s3');
-            const sinon = require('sinon');
-            const getObject = S3.prototype.getObject = sinon.stub();
-            getObject.withArgs({Bucket: 'validBucket', Key: 'validKey'}).returns({
-                promise: () => { return {
-                  Body: Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==', 'base64')
-                }}
-            })
-            // Act
-            const imageHandler = new ImageHandler();
-            const metadata = await sharp(Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==', 'base64')).metadata();
-            const result = await imageHandler.getOverlayImage('validBucket', 'validKey', '100', '100', '20', metadata);
-            // Assert
-            assert.deepEqual(result, Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAACXBIWXMAAAsSAAALEgHS3X78AAAADUlEQVQI12P4z8CQCgAEZgFlTg0nBwAAAABJRU5ErkJggg==', 'base64'));
-        });
-    });
-    describe('002/imageDoesNotExist', async function() {
-        it(`Should throw an error if an invalid bucket or key name is provided,
-            simulating a non-existant overlay image`, async function() {
-            // Arrange
-            const S3 = require('aws-sdk/clients/s3');
-            const sinon = require('sinon');
-            const getObject = S3.prototype.getObject = sinon.stub();
-            getObject.withArgs({Bucket: 'invalidBucket', Key: 'invalidKey'}).returns({
-                promise: () => {
-                    return Promise.reject({
-                        code: 500,
-                        message: 'SimulatedInvalidParameterException'
-                    })
-                }
-            });
-            // Act
-            const imageHandler = new ImageHandler();
-            // Assert
-            imageHandler.getOverlayImage('invalidBucket', 'invalidKey').then((result) => {
-                assert.equal(typeof result, Error);
-            }).catch((err) => {
-                console.log(err)
-            })
-        });
-    });
-});
+function stubFaceDetection(command = sinon.match.instanceOf(DetectFacesCommand)) {
+    const send = sinon.stub(RekognitionClient.prototype, 'send');
+    return send.withArgs(command);
+}
 
-// ----------------------------------------------------------------------------
-// [async] getCropArea()
-// ----------------------------------------------------------------------------
-describe('getCropArea()', function() {
-    describe('001/validParameters', function() {
-        it(`Should pass if the crop area can be calculated using a series of
-            valid inputs/parameters`, function() {
-            // Arrange
-            const boundingBox = {
-                Height: 0.18,
-                Left: 0.55,
-                Top: 0.33,
-                Width: 0.23
-            };
-            const options = { padding: 20 };
-            const metadata = {
-                width: 200,
-                height: 400
-            };
-            // Act
-            const imageHandler = new ImageHandler();
-            const result = imageHandler.getCropArea(boundingBox, options, metadata);
-            // Assert
-            const expectedResult = {
-                left: 90,
-                top: 112,
-                width: 86,
-                height: 112
-            }
-            assert.deepEqual(result, expectedResult);
-        });
-    });
-});
+function detectFace(originalImage) {
+    return stubFaceDetection(sinon.match.instanceOf(DetectFacesCommand)
+        .and(sinon.match.has('input', { Image: { Bytes: originalImage } })))
+        .resolves({ FaceDetails: [{ BoundingBox: { Left: 0.25, Top: 0.25, Width: 0.5, Height: 0.25 } }] });
+}
 
+function pixel(data, info, x, y) {
+    const start = (y * info.width + x) * info.channels;
+    return Array.from(data.subarray(start, start + info.channels));
+}
 
-// ----------------------------------------------------------------------------
-// [async] getBoundingBox()
-// ----------------------------------------------------------------------------
-describe('getBoundingBox()', function() {
-    describe('001/validParameters', function() {
-        it(`Should pass if the proper parameters are passed to the function`,
-            async function() {
-            // Arrange
-            const sinon = require('sinon');
-            const rekognition = require('aws-sdk/clients/rekognition');
-            const detectFaces = rekognition.prototype.detectFaces = sinon.stub();
-            // ----
-            const imageBytes = Buffer.from('TestImageData');
-            detectFaces.withArgs({Image: {Bytes: imageBytes}}).returns({
-                promise: () => { return {
-                    FaceDetails: [{
-                        BoundingBox: {
-                            Height: 0.18,
-                            Left: 0.55,
-                            Top: 0.33,
-                            Width: 0.23
-                        }
-                    }]
-                }}
-            })
-            // ----
-            const currentImage = imageBytes;
-            const faceIndex = 0;
-            // Act
-            const imageHandler = new ImageHandler();
-            const result = await imageHandler.getBoundingBox(currentImage, faceIndex);
-            // Assert
-            const expectedResult = {
-                Height: 0.18,
-                Left: 0.55,
-                Top: 0.33,
-                Width: 0.23
-            };
-            assert.deepEqual(result, expectedResult);
-        });
+describe('ImageHandler', function () {
+    afterEach(function () {
+        sinon.restore();
     });
-    describe('002/errorHandling', function() {
-        it(`Should simulate an error condition returned by Rekognition`,
-            async function() {
-            // Arrange
-            const rekognition = require('aws-sdk/clients/rekognition');
-            const sinon = require('sinon');
-            const detectFaces = rekognition.prototype.detectFaces = sinon.stub();
-            detectFaces.returns({
-                promise: () => {
-                    return Promise.reject({
-                        code: 500,
-                        message: 'SimulatedError'
-                    })
-                }
-            })
-            // ----
-            const currentImage = Buffer.from('NotTestImageData');
-            const faceIndex = 0;
-            // Act
-            const imageHandler = new ImageHandler();
-            // Assert
-            imageHandler.getBoundingBox(currentImage, faceIndex).then((result) => {
-                assert.equal(typeof result, Error);
-            }).catch((err) => {
-                console.log(err)
-            })
+
+    it('applies grayscale and flip to the output pixels', async function () {
+        const originalPixels = Buffer.from([255, 100, 50, 0, 0, 0]);
+        const originalImage = await sharp(originalPixels, { raw: { width: 1, height: 2, channels: 3 } })
+            .png().toBuffer();
+        const result = await new ImageHandler().process({ originalImage, edits: { grayscale: true, flip: true } });
+        const { data, info } = await sharp(Buffer.from(result, 'base64')).raw().toBuffer({ resolveWithObject: true });
+
+        const first = pixel(data, info, 0, 0);
+        const second = pixel(data, info, 0, 1);
+        assert.deepEqual(first, [0, 0, 0]);
+        assert.ok(second[0] > 0);
+        assert.equal(second[0], second[1]);
+        assert.equal(second[1], second[2]);
+    });
+
+    it('returns image data in the requested format', async function () {
+        const originalImage = await solidImage(4, 4, 'red');
+        const result = await new ImageHandler().process({ originalImage, edits: {}, outputFormat: 'jpeg' });
+
+        assert.equal((await sharp(Buffer.from(result, 'base64')).metadata()).format, 'jpeg');
+    });
+
+    it('returns the original bytes when given no edits', async function () {
+        const originalImage = await solidImage(4, 4, 'red');
+        const result = await new ImageHandler().process({ originalImage });
+
+        assert.deepEqual(Buffer.from(result, 'base64'), originalImage);
+    });
+
+    for (const [options, x, y] of [
+        [undefined, 2, 2],
+        [{ left: '1', top: '1' }, 1, 1],
+        [{ left: '-1', top: '-1' }, 3, 3],
+        [{ left: '50p', top: '50p' }, 3, 3],
+        [{ left: '-50p', top: '-50p' }, 1, 1]
+    ]) {
+        it(`places a streamed overlay at ${x},${y} with ${JSON.stringify(options)}`, async function () {
+            const originalImage = await solidImage(6, 6, 'red');
+            const overlay = await solidImage(2, 2, 'blue');
+            stubImageDownload().resolves({ Body: { transformToByteArray: async () => new Uint8Array(overlay) } });
+            const edits = { overlayWith: { bucket: 'overlays', key: 'watermark.png', options } };
+            const result = await new ImageHandler().applyEdits(originalImage, edits);
+            const { data, info } = await result.raw().toBuffer({ resolveWithObject: true });
+
+            assert.deepEqual(pixel(data, info, x - 1, y - 1), [255, 0, 0, 255]);
+            assert.deepEqual(pixel(data, info, x, y), [0, 0, 255, 255]);
         });
+    }
+
+    it('scales the overlay and applies alpha to the image pixels', async function () {
+        const overlay = await solidImage(4, 4, 'blue');
+        stubImageDownload().resolves({ Body: { transformToByteArray: async () => new Uint8Array(overlay) } });
+        const result = await new ImageHandler().getOverlayImage('overlays', 'watermark.png', 50, 50, 20,
+            { width: 4, height: 4 });
+        const { data, info } = await sharp(result).raw().toBuffer({ resolveWithObject: true });
+
+        assert.deepEqual([info.width, info.height], [2, 2]);
+        assert.deepEqual(pixel(data, info, 0, 0), [0, 0, 255, 204]);
+    });
+
+    it('reports missing overlay objects using the S3 status and service code', async function () {
+        stubImageDownload().rejects({ name: 'NoSuchKey', $metadata: { httpStatusCode: 404 }, message: 'Missing overlay' });
+
+        await assert.rejects(new ImageHandler().getOverlayImage('overlays', 'watermark.png', 50, 50, 20,
+            { width: 4, height: 4 }), { status: 404, code: 'NoSuchKey', message: 'Missing overlay' });
+    });
+
+    for (const smartCrop of [true, { faceIndex: 0, padding: 0 }]) {
+        it(`crops around the detected face for smartCrop ${JSON.stringify(smartCrop)}`, async function () {
+            const originalImage = await solidImage(8, 8, 'red');
+            detectFace(originalImage);
+            const result = await new ImageHandler().applyEdits(originalImage, { smartCrop });
+            const { info } = await result.toBuffer({ resolveWithObject: true });
+
+            assert.deepEqual([info.width, info.height], [4, 2]);
+        });
+    }
+
+    it('reports an out-of-range face index with the existing 400 response', async function () {
+        const originalImage = await solidImage(8, 8, 'red');
+        detectFace(originalImage);
+
+        await assert.rejects(new ImageHandler().applyEdits(originalImage, { smartCrop: { faceIndex: 2 } }),
+            { status: 400, code: 'SmartCrop::FaceIndexOutOfRange' });
+    });
+
+    it('reports a face crop whose padding exceeds the source image', async function () {
+        const originalImage = await solidImage(8, 8, 'red');
+        detectFace(originalImage);
+
+        await assert.rejects(new ImageHandler().applyEdits(originalImage, { smartCrop: { padding: 10 } }),
+            { status: 400, code: 'SmartCrop::PaddingOutOfBounds' });
+    });
+
+    it('includes requested padding when computing the crop rectangle', function () {
+        const box = { Left: 0.55, Top: 0.33, Width: 0.23, Height: 0.18 };
+        const area = new ImageHandler().getCropArea(box, { padding: 20 }, { width: 200, height: 400 });
+
+        assert.deepEqual(area, { left: 90, top: 112, width: 86, height: 112 });
+    });
+
+    it('reports a Rekognition service error using its code and message', async function () {
+        stubFaceDetection().rejects({ name: 'InvalidImageFormatException', $metadata: { httpStatusCode: 400 },
+            message: 'Invalid image format' });
+
+        await assert.rejects(new ImageHandler().getBoundingBox(Buffer.from('Not an image'), 0),
+            { status: 500, code: 'InvalidImageFormatException', message: 'Invalid image format' });
     });
 });

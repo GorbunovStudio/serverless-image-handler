@@ -316,7 +316,7 @@ Resources:
               - General
               - KeyPrefix
             - "image-handler.zip"
-      Runtime: nodejs12.x
+      Runtime: nodejs24.x
       MemorySize: 1024
       Timeout: 30
       Environment:

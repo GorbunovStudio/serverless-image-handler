@@ -71,7 +71,6 @@ echo "--------------------------------------------------------------------------
 echo "Package the image-handler code"
 echo "------------------------------------------------------------------------------"
 cd $source_dir/image-handler
-npm install
 npm run build
 cp dist/image-handler.zip $build_dist_dir/image-handler.zip
 

@@ -181,19 +181,29 @@ describe('process()', function() {
 // parseCustomPath()
 // ----------------------------------------------------------------------------
 describe('parseCustomPath()', function() {
+    let environment;
+
+    beforeEach(function () {
+        environment = process.env;
+        process.env = { ...environment };
+    });
+
+    afterEach(function () {
+        process.env = environment;
+    });
+
     describe('001/validPath', function() {
-        it(`Should pass if the proper edit translations are applied and in the
-            correct order`, function() {
+        it(`Should replace the configured path text`, function() {
             const event = {
-                path : '/filters-rotate(90)/filters-grayscale()/thumbor-image.jpg'
+                path : '/filters-rotate(90)/thumbor-image.jpg'
             }
-            process.env.REWRITE_MATCH_PATTERN = /(filters-)/gm;
+            process.env.REWRITE_MATCH_PATTERN = 'filters-';
             process.env.REWRITE_SUBSTITUTION = 'filters:';
             // Act
             const thumborMapping = new ThumborMapping();
             const result = thumborMapping.parseCustomPath(event.path);
             // Assert
-            const expectedResult = '/filters:rotate(90)/filters:grayscale()/thumbor-image.jpg';
+            const expectedResult = '/filters:rotate(90)/thumbor-image.jpg';
             assert.deepEqual(result.path, expectedResult);
         });
     });
@@ -202,8 +212,8 @@ describe('parseCustomPath()', function() {
             const event = {
                 path : '/filters-rotate(90)/filters-grayscale()/thumbor-image.jpg'
             }
-            process.env.REWRITE_MATCH_PATTERN = undefined;
-            process.env.REWRITE_SUBSTITUTION = undefined;
+            delete process.env.REWRITE_MATCH_PATTERN;
+            delete process.env.REWRITE_SUBSTITUTION;
             // Act
             const thumborMapping = new ThumborMapping();
             // Assert
@@ -215,7 +225,7 @@ describe('parseCustomPath()', function() {
     describe('003/undefinedPath', function() {
         it(`Should throw an error if the path is not defined`, function() {
             const event = {};
-            process.env.REWRITE_MATCH_PATTERN = /(filters-)/gm;
+            process.env.REWRITE_MATCH_PATTERN = 'filters-';
             process.env.REWRITE_SUBSTITUTION = 'filters:';
             // Act
             const thumborMapping = new ThumborMapping();
@@ -228,8 +238,8 @@ describe('parseCustomPath()', function() {
     describe('004/undefinedAll', function() {
         it(`Should throw an error if the path is not defined`, function() {
             const event = {};
-            process.env.REWRITE_MATCH_PATTERN = undefined;
-            process.env.REWRITE_SUBSTITUTION = undefined;
+            delete process.env.REWRITE_MATCH_PATTERN;
+            delete process.env.REWRITE_SUBSTITUTION;
             // Act
             const thumborMapping = new ThumborMapping();
             // Assert

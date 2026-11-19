@@ -12,6 +12,7 @@
  *********************************************************************************************************************/
 
 const ThumborMapping = require('./thumbor-mapping');
+const getImageObject = require('./s3-image');
 
 class ImageRequest {
 
@@ -70,11 +71,8 @@ class ImageRequest {
      * @return {Promise} - The original image or an error.
      */
     async getOriginalImage(bucket, key) {
-        const S3 = require('aws-sdk/clients/s3');
-        const s3 = new S3();
-        const imageLocation = { Bucket: bucket, Key: key };
         try {
-            const originalImage = await s3.getObject(imageLocation).promise();
+            const originalImage = await getImageObject(bucket, key);
 
             if (originalImage.ContentType) {
                 this.ContentType = originalImage.ContentType;
@@ -82,8 +80,9 @@ class ImageRequest {
                 this.ContentType = "image";
             }
 
-            if (originalImage.Expires) {
-                this.Expires = new Date(originalImage.Expires).toUTCString();
+            const expires = originalImage.ExpiresString ?? originalImage.Expires;
+            if (expires) {
+                this.Expires = new Date(expires).toUTCString();
             }
 
             if (originalImage.LastModified) {
@@ -98,9 +97,10 @@ class ImageRequest {
 
             return originalImage.Body;
         } catch(err) {
+            const code = err.$metadata ? err.name : err.code;
             throw {
-                status: ('NoSuchKey' === err.code) ? 404 : 500,
-                code: err.code,
+                status: code === 'NoSuchKey' ? 404 : 500,
+                code,
                 message: err.message
             };
         }
